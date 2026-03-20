@@ -1,0 +1,53 @@
+---
+description: Mineflayer bot setup, config from .env, events, and world API. Use when writing or editing Minecraft bots (bot.js, viewer, autonomous, basic).
+globs: "**/bot.js"
+alwaysApply: false
+---
+
+# Mineflayer Bots
+
+Reference: [Mineflayer](https://mineflayer.com/) · [GitHub PrismarineJS/mineflayer](https://github.com/PrismarineJS/mineflayer)
+
+## Config and secrets
+
+- **No hardcoded secrets.** Use `.env` and `dotenv`: `require('dotenv').config()` at top; read `MC_HOST`, `MC_PORT`, `MC_USERNAME`, `MC_VERSION`, `MC_AUTH`, and any login/passwords from `process.env`.
+- Provide `.env.example` with variable names and empty or placeholder values; keep `.env` in `.gitignore`.
+- Require `MC_HOST` and `MC_USERNAME` (or equivalent) when missing: `console.error` and `process.exit(1)`.
+
+## Creating the bot
+
+```js
+const bot = mineflayer.createBot({
+  host: process.env.MC_HOST,
+  port: parseInt(process.env.MC_PORT || '25565', 10),
+  username: process.env.MC_USERNAME,
+  version: process.env.MC_VERSION || '1.21.11',
+  auth: process.env.MC_AUTH || 'offline',
+  hideErrors: true  // optional: suppress protocol parse errors from server
+});
+```
+
+## Essential events
+
+- `bot.on('login', () => ...)` — after connection.
+- `bot.on('spawn', () => ...)` — in world; send server login command here if needed (from env).
+- `bot.on('chat', (username, message) => ...)` — ignore own: `if (username === bot.username) return`.
+- `bot.on('kicked', (reason) => ...)` and `bot.on('error', (err) => ...)` — log and handle.
+- `bot.on('end', (reason) => ...)` — schedule reconnect with `setTimeout(createBot, delay)` if desired.
+
+## World and blocks
+
+- **Find block:** `bot.findBlock({ matching: (b) => b.name === 'diamond_ore', maxDistance: 32 })` → single block or `null`.
+- **Find blocks:** `bot.findBlocks({ matching: id => id === 56, maxDistance: 16, count: 5 })` → array of positions (closest first).
+- **Block at position:** `bot.blockAt(vec3)`.
+- **Entity:** `bot.nearestEntity(entity => entity.name === 'cow')`.
+
+## Chat and movement
+
+- `bot.chat(message)` — public chat (Minecraft chat length limit ~256 chars; split if needed).
+- Movement: `bot.setControlState('forward', true)` / `false`; keys: `forward`, `back`, `left`, `right`, `jump`, `sprint`, `sneak`.
+- Position: `bot.entity.position` (Vec3).
+
+## Version support
+
+Mineflayer supports 1.8–1.21.11. Set `version` in createBot when the server uses a specific version (e.g. `1.21.11`).

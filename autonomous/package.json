@@ -1,7 +1,7 @@
 {
-  "name": "mineflayer-lan-bot",
+  "name": "mineflayer-autonomous-bot",
   "version": "1.0.0",
-  "description": "Basic Mineflayer bot for Minecraft 1.21.x on a LAN server",
+  "description": "Autonomous Mineflayer bot for Minecraft 1.21.x",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
@@ -11,6 +11,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "mineflayer": "^4.21.0"
   }
 }

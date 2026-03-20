@@ -4,31 +4,38 @@
 /**
  * Mineflayer bot for mc.pixelados.cc:25570 (1.21.11).
  * Fork of mineflayer-lan-bot. Override with env: MC_HOST, MC_PORT, MC_USERNAME, MC_VERSION, MC_AUTH.
- * Viewer: VIEWER_ENABLED=1, VIEWER_PORT (default 3000), VIEWER_PERSPECTIVE (first|third).
- * CLI: WASD/space = hold to move. LOOK_STEP (radians per arrow key, default 0.1). Reconnect: JARVYS_RESTART_DELAY_MS (default 5000).
+ * Viewer: VIEWER_ENABLED (default 1), VIEWER_PORT (default 3000), VIEWER_PERSPECTIVE (first|third).
+ * Controles en la misma página del viewer (teclado: WASD, espacio, flechas). STDIN_CONTROLS=1 para terminal.
+ * Reconnect: JARVYS_RESTART_DELAY_MS (default 5000).
  */
 
+require('dotenv').config();
 const mineflayer = require('mineflayer');
 const net = require('net');
 const path = require('path');
 const { exec, spawn } = require('child_process');
 const os = require('os');
-const mineflayerViewer = require('prismarine-viewer').mineflayer;
+const EventEmitter = require('events');
+const express = require('express');
+const http = require('http');
+const { setupRoutes } = require('prismarine-viewer/lib/common');
+const { WorldView } = require('prismarine-viewer/viewer');
 
 const CHAT_SERVER_PORT = parseInt(process.env.CHAT_SERVER_PORT || '0', 10);
-const SPAWN_CHAT_TERMINAL = /^1|true|yes$/i.test(process.env.SPAWN_CHAT_TERMINAL !== undefined ? process.env.SPAWN_CHAT_TERMINAL : '1');
+const SPAWN_CHAT_TERMINAL = /^1|true|yes$/i.test(process.env.SPAWN_CHAT_TERMINAL || '');
 const CHAT_TERMINAL = process.env.CHAT_TERMINAL || 'gnome-terminal';
 const COMMAND_SERVER_PORT = parseInt(process.env.COMMAND_SERVER_PORT || '0', 10);
 const SPAWN_COMMAND_TERMINAL = /^1|true|yes$/i.test(process.env.SPAWN_COMMAND_TERMINAL !== undefined ? process.env.SPAWN_COMMAND_TERMINAL : '1');
 const COMMAND_TERMINAL = process.env.COMMAND_TERMINAL || 'gnome-terminal';
 
 // !pr: SSH host and command; override with env
-const PR_SSH_HOST = process.env.PR_SSH_HOST || 'amvara4';
+const PR_SSH_HOST = process.env.PR_SSH_HOST || '';
 const PR_TIMEOUT_MS = parseInt(process.env.PR_TIMEOUT_MS || '60000', 10);
 const MAX_CHAT_LEN = 256; // Minecraft chat limit
 const RESTART_DELAY_MS = parseInt(process.env.JARVYS_RESTART_DELAY_MS || '5000', 10);
-const VIEWER_ENABLED = /^1|true|yes$/i.test(process.env.VIEWER_ENABLED || '');
+const VIEWER_ENABLED = /^1|true|yes$/i.test(process.env.VIEWER_ENABLED !== undefined ? process.env.VIEWER_ENABLED : '1');
 const VIEWER_PORT = parseInt(process.env.VIEWER_PORT || '3000', 10);
+const USE_STDIN_CONTROLS = /^1|true|yes$/i.test(process.env.STDIN_CONTROLS || '');
 /** true = primera persona, false = tercera. Por defecto primera. */
 const VIEWER_FIRST_PERSON = !/^0|false|no|third|tercera|3$/i.test(process.env.VIEWER_PERSPECTIVE || 'first');
 /** Radianes que gira la cabeza por pulsación de flecha (↑↓←→). */
@@ -36,6 +43,10 @@ const LOOK_STEP = parseFloat(process.env.LOOK_STEP || '0.1');
 
 /** Run openclaw on PR_SSH_HOST and send stdout/stderr to chat in chunks. */
 function runOpenclawViaSsh(message, bot) {
+  if (!PR_SSH_HOST) {
+    bot.chat('[pr] PR_SSH_HOST not set in .env');
+    return;
+  }
   const innerCmd = `openclaw agent --agent main --message ${JSON.stringify(message)}`;
   const home = process.env.HOME || os.homedir();
   const sshConfig = `${home}/.ssh/config`;
@@ -86,17 +97,23 @@ function runOpenclawViaSsh(message, bot) {
   });
 }
 
-// Pixelados server config — override with env vars
+// Server config from .env (see .env.example)
 const config = {
-  host: process.env.MC_HOST || 'mc.pixelados.cc',
+  host: process.env.MC_HOST,
   port: parseInt(process.env.MC_PORT || '25570', 10),
-  username: process.env.MC_USERNAME || 'Jarvys',
+  username: process.env.MC_USERNAME,
   version: process.env.MC_VERSION || '1.21.11',
-  auth: process.env.MC_AUTH || 'offline'  // 'offline' for cracked; 'microsoft' for premium
+  auth: process.env.MC_AUTH || 'offline'
 };
+if (!config.host || !config.username) {
+  console.error('[Bot] Set MC_HOST and MC_USERNAME in .env (copy from .env.example)');
+  process.exit(1);
+}
 
 /** Bot actual; se actualiza en cada reconexión para que WASD/chat controlen el bot vivo. */
 let currentBot;
+/** Controles de movimiento expuestos para el viewer (se asignan en setupCliInput). */
+let viewerMovementControls = null;
 
 function createBot() {
   const bot = mineflayer.createBot({
@@ -116,12 +133,14 @@ function createBot() {
 
   bot.on('spawn', () => {
     console.log(`[Bot] Spawned at ${bot.entity.position}`);
-    const loginCmd = '/login ^>wHZ+*82i';
-    console.log('[Bot] Enviando:', loginCmd);
-    bot.chat(loginCmd);
-    if (VIEWER_ENABLED) {
-      mineflayerViewer(bot, { port: VIEWER_PORT, firstPerson: VIEWER_FIRST_PERSON });
-      console.log(`[Bot] Viewer: http://localhost:${VIEWER_PORT} (${VIEWER_FIRST_PERSON ? 'primera' : 'tercera'} persona)`);
+    const loginCmd = process.env.MC_LOGIN_CMD;
+    if (loginCmd && loginCmd.trim()) {
+      console.log('[Bot] Sending login command');
+      bot.chat(loginCmd.trim());
+    }
+    if (VIEWER_ENABLED && viewerMovementControls) {
+      startViewerWithControls(bot, viewerMovementControls);
+      console.log(`[Bot] Viewer: http://localhost:${VIEWER_PORT} (${VIEWER_FIRST_PERSON ? 'primera' : 'tercera'} persona, controles por teclado en la página)`);
     }
   });
 
@@ -277,6 +296,254 @@ function createBot() {
   return bot;
 }
 
+/** Página del viewer con script que captura teclas (WASD, espacio, flechas, T+Enter chat) y envía por socket.io. */
+function getViewerIndexHtml() {
+  const lookStep = LOOK_STEP;
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>Prismarine Viewer</title>
+  <style type="text/css">
+    html{overflow:hidden}html,body{height:100%;margin:0;padding:0}canvas{height:100%;width:100%;font-size:0;margin:0;padding:0}
+    #chat-container{position:fixed;bottom:0;left:0;max-height:200px;width:100%;max-width:400px;background:rgba(0,0,0,0.45);padding:6px 10px;font-size:14px;color:#e0e0e0;font-family:monospace;pointer-events:none;z-index:1000}
+    #chat-container.chat-open{pointer-events:auto;max-height:320px}
+    #chat-messages{overflow-y:auto;overflow-x:hidden;max-height:180px;word-wrap:break-word}
+    #chat-container.chat-open #chat-messages{max-height:280px}
+    .chat-msg{margin-bottom:2px;line-height:1.35;text-shadow:0 1px 2px rgba(0,0,0,0.8)}
+    .chat-msg.fade-out{opacity:0;transition:opacity 0.5s ease-out}
+  </style>
+</head>
+<body>
+  <div id="chat-container">
+    <div id="chat-messages"></div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="text/javascript" src="index.js"></script>
+  <script>
+(function(){
+  if (typeof io === 'undefined') return;
+  var socket = io();
+  var lookStep = ${lookStep};
+  var keyToControl = { 'KeyW':'forward','KeyS':'back','KeyA':'left','KeyD':'right','Space':'jump' };
+  var keyToLook = { 'ArrowUp':[0,lookStep],'ArrowDown':[0,-lookStep],'ArrowLeft':[lookStep,0],'ArrowRight':[-lookStep,0] };
+  var sprintOn = false;
+  function onKeyDown(e) {
+    if (e.repeat) return;
+    if (chatInput && document.activeElement === chatInput) return;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+      e.preventDefault();
+      sprintOn = !sprintOn;
+      socket.emit('control', { key: 'sprint', state: sprintOn ? 'down' : 'up' });
+      return;
+    }
+    var c = keyToControl[e.code];
+    if (c) {
+      e.preventDefault();
+      socket.emit('control', { key: c, state: 'down' });
+      return;
+    }
+    var look = keyToLook[e.code];
+    if (look) {
+      e.preventDefault();
+      socket.emit('look', { dyaw: look[0], dpitch: look[1] });
+    }
+  }
+  function onKeyUp(e) {
+    if (chatInput && document.activeElement === chatInput) return;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') return;
+    var c = keyToControl[e.code];
+    if (c) {
+      e.preventDefault();
+      socket.emit('control', { key: c, state: 'up' });
+    }
+  }
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+  var chatInput = null;
+  var messages = [];
+  var maxStored = 50;
+  var fadeAfterMs = 5000;
+  var chatContainer = document.getElementById('chat-container');
+  var chatMessages = document.getElementById('chat-messages');
+  function addMessageEl(text) {
+    var el = document.createElement('div');
+    el.className = 'chat-msg';
+    el.textContent = text;
+    return el;
+  }
+  function scrollChatBottom() {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+  function scheduleFade(el) {
+    setTimeout(function() {
+      el.classList.add('fade-out');
+      setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 500);
+    }, fadeAfterMs);
+  }
+  function renderHistory(count, shouldFade) {
+    chatMessages.innerHTML = '';
+    var start = Math.max(0, messages.length - count);
+    for (var i = start; i < messages.length; i++) {
+      var el = addMessageEl(messages[i]);
+      chatMessages.appendChild(el);
+      if (shouldFade) scheduleFade(el);
+    }
+    scrollChatBottom();
+  }
+  socket.on('gameChat', function(msg) {
+    var text = (typeof msg === 'string' ? msg : String(msg || '')).trim();
+    if (!text) return;
+    messages.push(text);
+    if (messages.length > maxStored) messages.shift();
+    if (chatInput && document.activeElement === chatInput) {
+      renderHistory(20, false);
+      return;
+    }
+    var el = addMessageEl(text);
+    chatMessages.appendChild(el);
+    scrollChatBottom();
+    scheduleFade(el);
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.code === 'KeyT' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (chatInput && document.activeElement === chatInput) return;
+      e.preventDefault();
+      if (!chatInput) {
+        ['forward','back','left','right','jump'].forEach(function(k){ socket.emit('control', { key: k, state: 'up' }); });
+        chatContainer.classList.add('chat-open');
+        renderHistory(20, false);
+        chatInput = document.createElement('input');
+        chatInput.type = 'text';
+        chatInput.placeholder = 'Chat...';
+        chatInput.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:8px;font-size:14px;z-index:9999;border:1px solid #333;background:rgba(0,0,0,0.7);color:#fff';
+        chatInput.onkeydown = function(ev) {
+          if (ev.code === 'Enter') {
+            var msg = chatInput.value.trim();
+            if (msg) socket.emit('chat', msg);
+            chatInput.value = '';
+            chatInput.remove();
+            chatInput = null;
+            chatContainer.classList.remove('chat-open');
+            renderHistory(5, true);
+          }
+          if (ev.code === 'Escape') {
+            chatInput.remove();
+            chatInput = null;
+            chatContainer.classList.remove('chat-open');
+            renderHistory(5, true);
+          }
+        };
+        document.body.appendChild(chatInput);
+        chatInput.focus();
+      }
+    }
+  }, true);
+})();
+  </script>
+</body>
+</html>`;
+}
+
+/** Servidor del viewer (puerto VIEWER_PORT) con controles por teclado en la misma página. Replica lógica de prismarine-viewer y añade eventos control/chat/look. */
+function startViewerWithControls(bot, controls) {
+  const viewDistance = 6;
+  const prefix = '';
+  const app = express();
+  const server = http.createServer(app);
+  const io = require('socket.io')(server, { path: prefix + '/socket.io' });
+
+  app.get('/', (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(getViewerIndexHtml());
+  });
+  setupRoutes(app, prefix);
+
+  const sockets = [];
+  const primitives = {};
+  function broadcastGameChat(msg) {
+    const text = (typeof msg === 'string' ? msg : String(msg || '')).trim();
+    if (text) {
+      for (const s of sockets) s.emit('gameChat', text);
+    }
+  }
+  const onGameMessage = (msg) => broadcastGameChat(msg);
+  bot.on('messagestr', onGameMessage);
+  bot.viewer = new EventEmitter();
+  bot.viewer.erase = (id) => {
+    delete primitives[id];
+    for (const s of sockets) s.emit('primitive', { id });
+  };
+  bot.viewer.drawBoxGrid = (id, start, end, color = 'aqua') => {
+    primitives[id] = { type: 'boxgrid', id, start, end, color };
+    for (const s of sockets) s.emit('primitive', primitives[id]);
+  };
+  bot.viewer.drawLine = (id, points, color = 0xff0000) => {
+    primitives[id] = { type: 'line', id, points, color };
+    for (const s of sockets) s.emit('primitive', primitives[id]);
+  };
+  bot.viewer.drawPoints = (id, points, color = 0xff0000, size = 5) => {
+    primitives[id] = { type: 'points', id, points, color, size };
+    for (const s of sockets) s.emit('primitive', primitives[id]);
+  };
+
+  const validKeys = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
+  io.on('connection', (socket) => {
+    socket.emit('version', bot.version);
+    sockets.push(socket);
+
+    const worldView = new WorldView(bot.world, viewDistance, bot.entity.position, socket);
+    worldView.init(bot.entity.position);
+    worldView.on('blockClicked', (block, face, button) => {
+      bot.viewer.emit('blockClicked', block, face, button);
+    });
+    for (const id in primitives) socket.emit('primitive', primitives[id]);
+
+    function botPosition() {
+      const packet = { pos: bot.entity.position, yaw: bot.entity.yaw, addMesh: true };
+      if (VIEWER_FIRST_PERSON) packet.pitch = bot.entity.pitch;
+      socket.emit('position', packet);
+      worldView.updatePosition(bot.entity.position);
+    }
+    bot.on('move', botPosition);
+    worldView.listenToBot(bot);
+
+    socket.on('control', (data) => {
+      if (!data || !validKeys.includes(data.key)) return;
+      controls.setControl(data.key, data.state === 'down');
+    });
+    socket.on('look', (data) => {
+      if (data && Number.isFinite(data.dyaw) && Number.isFinite(data.dpitch)) {
+        controls.adjustLook(Number(data.dyaw), Number(data.dpitch));
+      }
+    });
+    socket.on('chat', (msg) => {
+      const text = (typeof msg === 'string' ? msg : '').trim().slice(0, MAX_CHAT_LEN);
+      if (text && currentBot) {
+        try {
+          currentBot.chat(text);
+        } catch (e) {
+          console.error('[Viewer] Chat error:', e.message);
+        }
+      }
+    });
+
+    socket.on('disconnect', () => {
+      bot.removeListener('move', botPosition);
+      worldView.removeListenersFromBot(bot);
+      sockets.splice(sockets.indexOf(socket), 1);
+    });
+  });
+
+  server.listen(VIEWER_PORT, () => {
+    console.log('Prismarine viewer web server running on *:' + VIEWER_PORT);
+  });
+  bot.viewer.close = () => {
+    bot.removeListener('messagestr', onGameMessage);
+    server.close();
+    for (const s of sockets) s.disconnect();
+  };
+}
+
 /** Servidor TCP: cada línea recibida se envía al chat del juego. Opcionalmente abre una segunda terminal con el cliente. */
 function setupChatServer() {
   const server = net.createServer((socket) => {
@@ -389,9 +656,9 @@ function setupCommandServer() {
   });
 }
 
-/** Raw mode: WASD + espacio = movimiento mientras se mantiene pulsado. Flechas = cámara (↑↓ pitch, ←→ yaw). Ctrl+C = salir. */
-function setupCliInput() {
-  const HOLD_RELEASE_MS = 120; // Tras este tiempo sin nueva pulsación se considera "tecla soltada" (key repeat del terminal)
+/** Controles compartidos: setControl, holdControl, releaseControl, adjustLook. Usados por CLI (stdin) o por web. */
+function setupMovementControls() {
+  const HOLD_RELEASE_MS = 120;
   const releaseTimers = { forward: null, back: null, left: null, right: null, jump: null };
 
   function setControl(name, value) {
@@ -410,7 +677,14 @@ function setupCliInput() {
     }, HOLD_RELEASE_MS);
   }
 
-  /** Ajusta la orientación de la cabeza (dyaw, dpitch en radianes). Pitch: negativo = mirar arriba. */
+  function releaseControl(name) {
+    if (releaseTimers[name]) {
+      clearTimeout(releaseTimers[name]);
+      releaseTimers[name] = null;
+    }
+    setControl(name, false);
+  }
+
   function adjustLook(dyaw, dpitch) {
     if (!currentBot || !currentBot.entity) return;
     const entity = currentBot.entity;
@@ -421,12 +695,30 @@ function setupCliInput() {
     } catch (e) {}
   }
 
+  return { setControl, holdControl, releaseControl, adjustLook };
+}
+
+/** Raw mode por terminal: WASD + espacio + flechas. Solo si STDIN_CONTROLS=1. Controles por defecto en la página del viewer. */
+function setupCliInput() {
+  const controls = setupMovementControls();
+  viewerMovementControls = controls;
+  const { holdControl, adjustLook } = controls;
+
+  if (!USE_STDIN_CONTROLS) {
+    process.on('SIGINT', () => process.exit());
+    if (VIEWER_ENABLED) {
+      console.log('[CLI] Controles en la página del viewer (http://localhost:' + VIEWER_PORT + '). Ctrl+C = salir.');
+    } else {
+      console.log('[CLI] Sin viewer ni stdin. Ctrl+C = salir.');
+    }
+    return;
+  }
+
   function isCtrlC(key) {
     if (Buffer.isBuffer(key)) return key.length >= 1 && key[0] === 3;
     if (typeof key === 'string') return key.length >= 1 && key.charCodeAt(0) === 3;
     return false;
   }
-
   function isArrowUp(key) { return key === '\x1b[A' || key === '\x1bOA'; }
   function isArrowDown(key) { return key === '\x1b[B' || key === '\x1bOB'; }
   function isArrowRight(key) { return key === '\x1b[C' || key === '\x1bOC'; }
@@ -439,13 +731,10 @@ function setupCliInput() {
     }
     if (Buffer.isBuffer(key)) key = key.toString('utf8');
     else if (typeof key !== 'string') return;
-
-    // Flechas: ↑↓ pitch (arriba = +LOOK_STEP por convención del viewer), ←→ yaw
     if (isArrowUp(key)) { adjustLook(0, LOOK_STEP); return; }
     if (isArrowDown(key)) { adjustLook(0, -LOOK_STEP); return; }
     if (isArrowLeft(key)) { adjustLook(LOOK_STEP, 0); return; }
     if (isArrowRight(key)) { adjustLook(-LOOK_STEP, 0); return; }
-
     const c = (typeof key === 'string' && key.length >= 1) ? key[0].toLowerCase() : '';
     if (c === 'w') holdControl('forward');
     else if (c === 's') holdControl('back');
@@ -460,9 +749,9 @@ function setupCliInput() {
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', onKey);
-    console.log('[CLI] Controles: WASD/espacio = mantener pulsado para moverse | ↑↓←→ = cámara | Ctrl+C = salir');
+    console.log('[CLI] Controles terminal: WASD/espacio | ↑↓←→ | Ctrl+C = salir');
   } else {
-    console.log('[CLI] stdin no es TTY; WASD/flechas no disponibles. Usa Ctrl+C para salir.');
+    console.log('[CLI] stdin no es TTY. Usa la web o Ctrl+C para salir.');
   }
 }
 

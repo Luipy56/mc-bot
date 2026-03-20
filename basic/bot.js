@@ -6,18 +6,22 @@
  * Uses env or defaults: HOST, PORT, USERNAME, VERSION, AUTH.
  */
 
+require('dotenv').config();
 const mineflayer = require('mineflayer');
 const { exec } = require('child_process');
 const os = require('os');
 
-// !pr: SSH host and command; override with env
-const PR_SSH_HOST = process.env.PR_SSH_HOST || 'amvara4';
+const PR_SSH_HOST = process.env.PR_SSH_HOST || '';
 const PR_TIMEOUT_MS = parseInt(process.env.PR_TIMEOUT_MS || '60000', 10);
 const MAX_CHAT_LEN = 256; // Minecraft chat limit
 const RESTART_DELAY_MS = parseInt(process.env.JARVYS_RESTART_DELAY_MS || '5000', 10);
 
 /** Run openclaw on PR_SSH_HOST and send stdout/stderr to chat in chunks. */
 function runOpenclawViaSsh(message, bot) {
+  if (!PR_SSH_HOST) {
+    bot.chat('[pr] PR_SSH_HOST not set in .env');
+    return;
+  }
   const innerCmd = `openclaw agent --agent main --message ${JSON.stringify(message)}`;
   const home = process.env.HOME || os.homedir();
   const sshConfig = `${home}/.ssh/config`;
@@ -58,14 +62,18 @@ function runOpenclawViaSsh(message, bot) {
   });
 }
 
-// LAN-friendly config: override with env vars or edit here
+// Server config from .env (see .env.example)
 const config = {
   host: process.env.MC_HOST || 'localhost',
-  port: parseInt(process.env.MC_PORT || '39143', 10),
-  username: process.env.MC_USERNAME || 'Jarvys',
-  version: process.env.MC_VERSION || '1.21.11', // 1.21, 1.21.1, 1.21.3, 1.21.4, 1.21.9, 1.21.11
-  auth: process.env.MC_AUTH || 'offline'      // 'offline' for LAN / cracked; 'microsoft' for premium
+  port: parseInt(process.env.MC_PORT || '25565', 10),
+  username: process.env.MC_USERNAME,
+  version: process.env.MC_VERSION || '1.21.11',
+  auth: process.env.MC_AUTH || 'offline'
 };
+if (!config.username) {
+  console.error('[Bot] Set MC_USERNAME in .env (copy from .env.example)');
+  process.exit(1);
+}
 
 function createBot() {
   const bot = mineflayer.createBot({

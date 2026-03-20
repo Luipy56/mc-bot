@@ -1,0 +1,31 @@
+---
+description: Prismarine web client — Minecraft in the browser (mineflayer + prismarine-viewer over WebSocket proxy). Use when discussing browser-based clients or web demos.
+globs: "**/*.js"
+alwaysApply: false
+---
+
+# Prismarine Web Client
+
+[Minecraft client in the browser](https://github.com/PrismarineJS/prismarine-web-client) — runs **mineflayer** and **prismarine-viewer** in the browser; connects to Minecraft servers via a WebSocket→TCP proxy.
+
+## How it works
+
+- **Frontend:** mineflayer + prismarine-viewer run in the browser (bundled with webpack).
+- **Backend:** A proxy translates WebSocket to TCP so the browser can talk to normal Minecraft servers.
+- **Demo:** [prismarinejs.github.io/prismarine-web-client](https://prismarinejs.github.io/prismarine-web-client/)
+
+## Relation to this repo
+
+This repo uses **mineflayer** (Node) with **prismarine-viewer** served from the same process (e.g. `viewer/bot.js`). That is a **server-side bot** with a browser view. The **prismarine-web-client** is a separate project: a **full client in the browser** that uses the same libraries but in the browser and through a proxy. When the user mentions "web client" or "browser Minecraft", they may mean either:
+
+1. **This repo’s viewer** — Node bot + prismarine-viewer on a local HTTP port.
+2. **prismarine-web-client** — Standalone browser app; run with `npm install -g prismarine-web-client` then `prismarine-web-client`, open `http://localhost:8080`.
+
+## Features (web client)
+
+- Display mobs, players, blocks; movement; place and break blocks.
+- Roadmap: containers (inventory, chests), sounds, more interactions.
+
+## Debug (web client)
+
+Globals in the browser: `window.bot`, `viewer`, `mcData`, `worldView`, `Vec3`, `pathfinder`, `debugMenu`. Example: `bot.loadPlugin(pathfinder.pathfinder)` then `bot.pathfinder.goto(new pathfinder.goals.GoalXZ(100, 100))`.

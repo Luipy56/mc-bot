@@ -5,14 +5,17 @@
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
-    "bot": "node bot.js"
+    "bot": "node bot.js",
+    "web-client": "prismarine-web-client 8080"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "canvas": "^3.0.0",
     "mineflayer": "^4.21.0",
-    "prismarine-viewer": "^1.33.0"
+    "prismarine-viewer": "^1.33.0",
+    "prismarine-web-client": "^1.4.0"
   }
 }

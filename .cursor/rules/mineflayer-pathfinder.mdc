@@ -1,0 +1,83 @@
+---
+description: Mineflayer pathfinding with mineflayer-pathfinder: Goals, Movements, goto. Use when adding autonomous movement or pathfinding to a bot.
+globs: "**/bot.js"
+alwaysApply: false
+---
+
+# Mineflayer Pathfinder
+
+Plugin: [mineflayer-pathfinder](https://www.npmjs.com/package/mineflayer-pathfinder) (npm) · [PrismarineJS/mineflayer-pathfinder](https://github.com/PrismarineJS/mineflayer-pathfinder) (GitHub)
+
+## Install and load
+
+```bash
+npm install mineflayer-pathfinder
+```
+
+```js
+const pathfinder = require('mineflayer-pathfinder').pathfinder;
+const Movements = require('mineflayer-pathfinder').Movements;
+const { GoalNear, GoalBlock, GoalXZ, GoalFollow } = require('mineflayer-pathfinder').goals;
+
+bot.loadPlugin(pathfinder);
+```
+
+## Setup after spawn
+
+Create a `Movements` instance and set it on the pathfinder. Optionally tune costs and behavior (dig, parkour, sprint, etc.).
+
+```js
+bot.once('spawn', () => {
+  const defaultMove = new Movements(bot);
+  // Optional: defaultMove.canDig = false; defaultMove.allow1by1towers = false;
+  bot.pathfinder.setMovements(defaultMove);
+});
+```
+
+## Goals (common)
+
+| Goal | Use case |
+|------|----------|
+| `GoalBlock(x, y, z)` | Stand inside block at foot level |
+| `GoalNear(x, y, z, range)` | Get within `range` blocks of position |
+| `GoalXZ(x, z)` | Long-range, any Y |
+| `GoalNearXZ(x, z, range)` | Approximate XZ, any Y |
+| `GoalGetToBlock(x, y, z)` | Adjacent to block (e.g. chest) |
+| `GoalFollow(entity, range)` | Follow an entity |
+| `GoalCompositeAny([...])` | Satisfy any one goal |
+| `GoalCompositeAll([...])` | Satisfy all goals |
+
+## Setting a goal and moving
+
+```js
+// Go to a position (range 1)
+bot.pathfinder.setGoal(new GoalNear(x, y, z, 1));
+
+// Async: wait until reached (or error)
+await bot.pathfinder.goto(goal);
+// Or with dynamic goal (updates when goal moves, e.g. player):
+bot.pathfinder.setGoal(new GoalFollow(playerEntity, 2), true);
+```
+
+## Pathfinder API (summary)
+
+- `bot.pathfinder.goto(goal)` — returns Promise, resolves when goal reached.
+- `bot.pathfinder.setGoal(goal, dynamic?)` — `dynamic: true` for moving targets.
+- `bot.pathfinder.setMovements(movements)` — set movement config.
+- `bot.pathfinder.stop()` — stop at next node (emits `path_stop`).
+- `bot.pathfinder.setGoal(null)` — force stop immediately.
+- `bot.pathfinder.isMoving()` / `isMining()` / `isBuilding()` — state checks.
+- `bot.pathfinder.bestHarvestTool(block)` — best tool for block (or null).
+
+## Events
+
+- `path_update` — path recalculated; status: `success`, `partial`, `timeout`, `noPath`.
+- `goal_reached` — goal reached (not for dynamic goals).
+- `path_reset` — path cleared (reason: `goal_updated`, `block_updated`, `stuck`, etc.).
+- `path_stop` — stopped via `bot.pathfinder.stop()`.
+
+## Movements options (examples)
+
+- `canDig`, `allow1by1towers`, `allowParkour`, `allowSprinting` — booleans.
+- `scafoldingBlocks` — array of item ids for building up.
+- `entityIntersections`, `exclusionAreasStep` / `Break` / `Place` — advanced cost/blocking.

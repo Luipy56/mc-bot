@@ -1,0 +1,27 @@
+---
+description: Optional web viewer for Mineflayer bot (first/third person). Use when adding or debugging bot visualization in browser.
+globs: "**/bot.js"
+alwaysApply: false
+---
+
+# Prismarine Viewer
+
+[prismarine-viewer](https://www.npmjs.com/package/prismarine-viewer) · Used in this repo by `viewer/bot.js`. For a **full Minecraft client in the browser** (mineflayer + viewer over a WebSocket proxy), see [prismarine-web-client](https://github.com/PrismarineJS/prismarine-web-client) and rule `prismarine-web-client.mdc`.
+
+## Install and use
+
+```bash
+npm install prismarine-viewer
+```
+
+```js
+const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
+
+bot.once('spawn', () => {
+  mineflayerViewer(bot, { port: 3007, firstPerson: true });
+});
+```
+
+- `port` — HTTP server port (e.g. 3000, 3007).
+- `firstPerson: true` — bot POV; `false` for bird's-eye.
+- Opens a live 3D view in the browser; useful for debugging movement and world state.
