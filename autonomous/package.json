@@ -5,13 +5,18 @@
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
-    "bot": "node bot.js"
+    "bot": "node bot.js",
+    "two": "node run-two-bots.js",
+    "test": "node tests/run-all.js && node test-task-loop.js",
+    "test:unit": "node tests/run-all.js",
+    "test:loop": "node test-task-loop.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "mineflayer": "^4.21.0"
+    "mineflayer": "^4.21.0",
+    "mineflayer-pathfinder": "^2.4.0"
   }
 }

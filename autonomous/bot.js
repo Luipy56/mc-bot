@@ -2,144 +2,256 @@
 'use strict';
 
 /**
- * Autonomous Mineflayer bot for Minecraft 1.21.x — minimal setup.
- * Config from .env: MC_HOST, MC_PORT, MC_USERNAME, MC_VERSION, MC_AUTH.
+ * Autonomous Mineflayer bot — goal: complete the game (Ender Dragon).
+ * Config from .env: NAME/SERVER_IP/PORT/VERSION or MC_*.
+ * Loads pathfinder and runs task loop after spawn.
  */
 
-require('dotenv').config();
 const mineflayer = require('mineflayer');
-const { exec } = require('child_process');
-const os = require('os');
+const pathfinder = require('mineflayer-pathfinder').pathfinder;
+const Movements = require('mineflayer-pathfinder').Movements;
 
-const PR_SSH_HOST = process.env.PR_SSH_HOST || '';
-const PR_TIMEOUT_MS = parseInt(process.env.PR_TIMEOUT_MS || '60000', 10);
-const MAX_CHAT_LEN = 256; // Minecraft chat limit
-const RESTART_DELAY_MS = parseInt(process.env.JARVYS_RESTART_DELAY_MS || '5000', 10);
+const { getConfig } = require('./lib/config');
+const { createState, markCompleted, isCompleted, setBlackboard } = require('./lib/state');
+const { nextTask } = require('./lib/brain');
+const { createExecutor } = require('./lib/executor');
+const { loadState, saveState } = require('./lib/persistence');
+const { formatKickReason, kickNeedsSlowReconnect } = require('./lib/kickReason');
+const { getCompleted, getIncomplete, getNextTaskForAdvancement } = require('./lib/advancements');
+const movementSkill = require('./skills/movement');
+const miningSkill = require('./skills/mining');
+const craftingSkill = require('./skills/crafting');
+const survivalSkill = require('./skills/survival');
+const buildingSkill = require('./skills/building');
+const netherSkill = require('./skills/nether');
+const endSkill = require('./skills/end');
+const sleepSkill = require('./skills/sleep');
+const armorSkill = require('./skills/armor');
+const weaponsSkill = require('./skills/weapons');
+const exploreSkill = require('./skills/explore');
+const retreatSkill = require('./skills/retreat');
+const smeltingSkill = require('./skills/smelting');
+const craftHousePlanksSkill = require('./skills/craftHousePlanks');
+const buildWoodenHouseSkill = require('./skills/buildWoodenHouse');
 
-/** Run openclaw on PR_SSH_HOST and send stdout/stderr to chat in chunks. */
-function runOpenclawViaSsh(message, bot) {
-  if (!PR_SSH_HOST) {
-    bot.chat('[pr] PR_SSH_HOST not set in .env');
-    return;
-  }
-  const innerCmd = `openclaw agent --agent main --message ${JSON.stringify(message)}`;
-  const home = process.env.HOME || os.homedir();
-  const sshConfig = `${home}/.ssh/config`;
-  const cmd = `ssh -F "${sshConfig}" -o BatchMode=yes ${PR_SSH_HOST} bash -lc ${JSON.stringify(innerCmd)}`;
-  bot.chat(`[pr] Running on ${PR_SSH_HOST}...`);
-  const execOpts = {
-    timeout: PR_TIMEOUT_MS,
-    maxBuffer: 2 * 1024 * 1024,
-    env: { ...process.env, HOME: home }
-  };
-  exec(cmd, execOpts, (err, stdout, stderr) => {
-    const out = (stdout && stdout.trim()) || '';
-    const stderrStr = (stderr && stderr.trim()) || '';
-    let text = out;
-    if (stderrStr) text = text ? `${text}\n${stderrStr}` : stderrStr;
-    if (err) text = text ? `(${err.message}) ${text}` : err.message || 'Command failed.';
-    if (!text) text = 'No output.';
-    const lines = text.split(/\r?\n/).filter(Boolean);
-    const toSend = [];
-    let buf = '';
-    for (const line of lines) {
-      if (buf.length + line.length + 1 <= MAX_CHAT_LEN) {
-        buf = buf ? `${buf}\n${line}` : line;
-      } else {
-        if (buf) toSend.push(buf);
-        buf = line.length <= MAX_CHAT_LEN ? line : line.slice(0, MAX_CHAT_LEN);
+const combatSkill = require('./skills/combat');
+const diamondCaveSkill = require('./skills/diamondCave');
+const config = getConfig();
+
+const skills = {
+  goto_test: movementSkill,
+  collect_wood: miningSkill,
+  collect_cobblestone: miningSkill,
+  collect_more_wood: miningSkill,
+  collect_coal: miningSkill,
+  collect_obsidian: miningSkill,
+  craft_planks: craftingSkill,
+  craft_sticks: craftingSkill,
+  craft_crafting_table: craftingSkill,
+  craft_stone_pick: craftingSkill,
+  craft_chest: craftingSkill,
+  craft_furnace: craftingSkill,
+  craft_bed: craftingSkill,
+  eat_if_needed: survivalSkill,
+  place_crafting_table: buildingSkill,
+  place_bed: buildingSkill,
+  place_chest: buildingSkill,
+  collect_wood_for_house: miningSkill,
+  craft_house_planks: craftHousePlanksSkill,
+  build_wooden_house: buildWoodenHouseSkill,
+  sleep_in_bed: sleepSkill,
+  equip_armor: armorSkill,
+  equip_weapon: weaponsSkill,
+  place_furnace: buildingSkill,
+  collect_iron_ore: miningSkill,
+  smelt_iron_ingots: smeltingSkill,
+  craft_iron_pickaxe: craftingSkill,
+  craft_stone_shovel: craftingSkill,
+  collect_gravel_for_flint: miningSkill,
+  craft_flint_and_steel: craftingSkill,
+  collect_diamond_ore: diamondCaveSkill,
+  craft_diamond_pickaxe: craftingSkill,
+  explore_nearby: exploreSkill,
+  retreat: retreatSkill,
+  build_nether_portal: netherSkill,
+  enter_nether: netherSkill,
+  collect_blaze_rods: netherSkill,
+  collect_ender_pearls: netherSkill,
+  craft_blaze_powder: craftingSkill,
+  craft_eyes_of_ender: endSkill,
+  find_stronghold: endSkill,
+  enter_end: endSkill,
+  kill_ender_dragon: endSkill,
+  kill_enemy: combatSkill,
+};
+
+const state = createState();
+loadState(state);
+if (!isCompleted(state, 'init_structure')) markCompleted(state, 'init_structure');
+const runTask = createExecutor(skills, { taskTimeoutMs: parseInt(process.env.TASK_TIMEOUT_MS || '120000', 10) });
+
+let bot;
+/** True while an autonomous iteration is in progress (prevents parallel runTask). */
+let loopRunning = false;
+let lastKickReason = '';
+const taskFailRetryMs = parseInt(process.env.TASK_FAIL_RETRY_MS || '2500', 10);
+
+/**
+ * Start the autonomous task loop if not already running. Safe to call from spawn, respawn, etc.
+ * Pattern: single async runner (like a coroutine) — avoids releasing the lock before await, which
+ * caused overlapping tasks. On task failure we backoff and continue (brain may switch to explore).
+ */
+function scheduleLoop() {
+  if (loopRunning || !bot) return;
+  loopRunning = true;
+  setImmediate(() => {
+    (async () => {
+      try {
+        while (bot && bot.entity) {
+          if (bot.isAlive === false) {
+            console.log('[Agent] Loop paused (dead); resumes on respawn.');
+            break;
+          }
+          const task = nextTask(state, bot);
+          console.log('[Agent] Task:', task.taskId, '—', task.reason);
+          const result = await runTask(bot, state, task);
+          console.log('[Agent] Result:', result.success ? 'ok' : 'fail', result.reason);
+          saveState(state);
+          if (task.taskId === 'idle') break;
+          if (!bot || !bot.entity || bot.isAlive === false) break;
+          if (!result.success && taskFailRetryMs > 0) {
+            await new Promise((r) => setTimeout(r, taskFailRetryMs));
+          }
+        }
+      } catch (err) {
+        console.error('[Agent] Loop error:', err.message || err);
+        saveState(state);
+      } finally {
+        loopRunning = false;
       }
-    }
-    if (buf) toSend.push(buf);
-    if (toSend.length === 0) toSend.push('No output.');
-    toSend.slice(0, 10).forEach((chunk, i) => {
-      setTimeout(() => { try { bot.chat(`[pr] ${chunk}`); } catch (e) { console.error(e); } }, i * 500);
-    });
-    if (toSend.length > 10) {
-      setTimeout(() => { try { bot.chat(`[pr] ... (${toSend.length - 10} more chunks)`); } catch (e) {} }, 10 * 500);
-    }
-    if (err) console.error('[pr]', err.message);
+    })();
   });
 }
 
-// Server config from .env (see .env.example)
-const config = {
-  host: process.env.MC_HOST || 'localhost',
-  port: parseInt(process.env.MC_PORT || '25565', 10),
-  username: process.env.MC_USERNAME,
-  version: process.env.MC_VERSION || '1.21.11',
-  auth: process.env.MC_AUTH || 'offline'
-};
-if (!config.username) {
-  console.error('[Bot] Set MC_USERNAME in .env (copy from .env.example)');
-  process.exit(1);
-}
-
 function createBot() {
-  const bot = mineflayer.createBot({
+  bot = mineflayer.createBot({
     host: config.host,
     port: config.port,
     username: config.username,
     version: config.version,
-    auth: config.auth
+    auth: config.auth,
   });
+
+  bot.loadPlugin(pathfinder);
 
   bot.on('login', () => {
     console.log(`[Bot] Logging in as ${config.username} → ${config.host}:${config.port} (${config.version})`);
   });
 
-  bot.on('spawn', () => {
-    console.log(`[Bot] Spawned at ${bot.entity.position}`);
+  function onSpawn() {
+    const defaultMove = new Movements(bot);
+    defaultMove.canDig = true;
+    bot.pathfinder.setMovements(defaultMove);
+    const p = bot.entity.position;
+    setBlackboard(state, 'spawnPos', { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) });
+    console.log('[Bot] Spawned at', p);
     bot.chat('Autonomous bot online.');
+    scheduleLoop();
+    if (botFriends.length > 0) {
+      setTimeout(() => {
+        for (const [name, player] of Object.entries(bot.players || {})) {
+          if (player && player.entity && name !== bot.username && isFriend(name)) greetPlayer(name);
+        }
+      }, 4000);
+    }
+  }
+
+  bot.on('spawn', onSpawn);
+
+  bot.on('death', () => {
+    console.log('[Bot] Died.');
+    try { bot.pathfinder?.setGoal(null); } catch (e) {}
+  });
+
+  bot.on('respawn', () => {
+    console.log('[Bot] Respawned — restarting task loop.');
+    setTimeout(() => {
+      if (bot && bot.entity) {
+        const p = bot.entity.position;
+        setBlackboard(state, 'spawnPos', { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) });
+        scheduleLoop();
+      }
+    }, 800);
+  });
+
+  const botFriends = (process.env.BOT_FRIENDS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s && s !== config.username.toLowerCase());
+
+  function isFriend(username) {
+    return username && botFriends.includes(String(username).toLowerCase());
+  }
+
+  function greetPlayer(username) {
+    if (!username || username === bot.username) return;
+    bot.chat(`Hi, ${username}!`);
+  }
+
+  bot.on('playerJoined', (player) => {
+    if (player.username && isFriend(player.username)) {
+      setTimeout(() => greetPlayer(player.username), 1500);
+    }
   });
 
   bot.on('chat', (username, message) => {
     if (username === bot.username) return;
-    console.log(`[Chat] <${username}> ${message}`);
-    const raw = message.trim();
+    console.log('[Chat] <', username, '>', message);
+    const raw = String(message || '').trim();
     const lower = raw.toLowerCase();
-    if (lower === 'ping') {
-      bot.chat('pong');
+    if (isFriend(username) && (lower === 'hello' || lower === 'hi' || lower === 'hey')) {
+      bot.chat(`Hello, ${username}!`);
       return;
     }
-    if (lower.startsWith('!')) {
-      if (lower.startsWith('!pr ')) {
-        const msg = raw.slice(4).trim();
-        if (msg) runOpenclawViaSsh(msg, bot);
-        else bot.chat('[pr] Usage: !pr <message>');
-        return;
+    if (lower === 'ping') { bot.chat('pong'); return; }
+    if (lower === '!time') {
+      const t = bot.time?.timeOfDay ?? 0;
+      const phase = bot.time?.isDay ? 'Day' : 'Night';
+      const p = bot.entity?.position;
+      const posStr = p ? ` @ (${Math.floor(p.x)}, ${Math.floor(p.y)}, ${Math.floor(p.z)})` : '';
+      bot.chat(`${phase} (${t})${posStr}`);
+      return;
+    }
+    if (lower === '!health' || lower === '!status') {
+      bot.chat(`Health: ${bot.health ?? '?'} | Food: ${bot.food ?? '?'}`);
+      return;
+    }
+    if (lower === '!logros' || lower === '!advancements' || lower === '!avances') {
+      const done = getCompleted(state, bot);
+      const pending = getIncomplete(state, bot);
+      bot.chat(`Logros: ${done.length}/${done.length + pending.length} completados.`);
+      if (pending.length > 0) {
+        const next = getNextTaskForAdvancement(state, bot);
+        if (next) {
+          bot.chat(`Siguiente: "${next.advancement.name}" (tarea: ${next.taskId}).`);
+        }
       }
-      const cmd = lower.slice(1).split(/\s+/)[0];
-      if (cmd === 'time') {
-        const timeOfDay = bot.time?.timeOfDay ?? 0;
-        const phase = bot.time?.isDay ? 'Day' : 'Night';
-        const pos = bot.entity?.position;
-        const posStr = pos ? ` @ (${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)})` : '';
-        bot.chat(`${phase} (${timeOfDay} ticks)${posStr}`);
-      } else if (cmd === 'players') {
-        const names = Object.keys(bot.players || {}).filter((n) => n !== bot.username);
-        bot.chat(names.length ? `Online: ${names.join(', ')}` : 'No other players online.');
-      } else if (cmd === 'health' || cmd === 'status') {
-        const h = bot.health ?? '?';
-        const f = bot.food ?? '?';
-        bot.chat(`Health: ${h} | Food: ${f}`);
-      }
+      return;
     }
   });
 
   bot.on('kicked', (reason) => {
-    console.log('[Bot] Kicked:', reason);
+    lastKickReason = formatKickReason(reason);
+    console.log('[Bot] Kicked:', lastKickReason);
   });
-
-  bot.on('error', (err) => {
-    console.error('[Bot] Error:', err.message);
-    if (err.stack) console.error('[Bot] Stack:', err.stack);
-  });
-
+  bot.on('error', (err) => console.error('[Bot] Error:', err.message));
   bot.on('end', (reason) => {
     console.log('[Bot] Disconnected:', reason || 'unknown');
-    console.log('[Bot] Restarting in 3s...');
-    setTimeout(createBot, 3000);
+    bot = null;
+    const slowReconnect = kickNeedsSlowReconnect(lastKickReason);
+    const delayMs = slowReconnect ? 35000 : 3000;
+    console.log('[Bot] Restarting in', delayMs / 1000, 's...');
+    setTimeout(createBot, delayMs);
   });
 
   return bot;

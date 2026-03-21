@@ -1,0 +1,1 @@
+{"progress":["init_structure","connect","goto_test"],"gameState":{"phase":"early","hasBed":false,"hasIronPick":false,"hasCraftingTable":false,"hasChest":false,"basePosition":null},"blackboard":{"spawnPos":{"x":-68,"y":72,"z":-108},"nearHostiles":0,"isDay":true,"timeOfDay":2447,"lastPos":{"x":-68,"y":72,"z":-108},"taskCooldownUntil":{},"taskFailures":{}}}
