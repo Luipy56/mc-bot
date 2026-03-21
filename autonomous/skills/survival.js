@@ -1,12 +1,6 @@
 'use strict';
 
-const { countItems } = require('../lib/inventoryQuery');
-
-const EDIBLE = [
-  'bread', 'cooked_beef', 'cooked_porkchop', 'cooked_chicken', 'cooked_mutton', 'cooked_cod', 'cooked_salmon',
-  'apple', 'golden_apple', 'carrot', 'baked_potato', 'cooked_rabbit', 'beetroot', 'melon_slice', 'sweet_berries',
-  'potato', 'cod', 'salmon', 'beef', 'porkchop', 'chicken', 'mutton', 'rabbit',
-];
+const { findBestFoodItem } = require('../lib/food');
 
 /**
  * Eat if food is low. params: { minFood?: number }.
@@ -17,8 +11,7 @@ async function runEat(bot, state, params = {}) {
     return { success: true, reason: 'Food OK.' };
   }
 
-  const items = bot.inventory.items();
-  const food = items.find((i) => i && EDIBLE.includes(i.name));
+  const food = findBestFoodItem(bot);
   if (!food) {
     return { success: false, reason: 'No food in inventory.' };
   }

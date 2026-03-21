@@ -1,7 +1,21 @@
 'use strict';
 
 const Vec3 = require('vec3');
-const { GoalGetToBlock } = require('mineflayer-pathfinder').goals;
+const { GoalNear } = require('mineflayer-pathfinder').goals;
+const { setBlackboard } = require('../lib/state');
+
+function isAirLike(name) {
+  return name === 'air' || name === 'cave_air' || name === 'void_air';
+}
+
+function candidatePositions(x, y, z) {
+  const offsets = [
+    [0, 0], [1, 0], [-1, 0], [0, 1], [0, -1],
+    [1, 1], [1, -1], [-1, 1], [-1, -1],
+    [2, 0], [-2, 0], [0, 2], [0, -2],
+  ];
+  return offsets.map(([dx, dz]) => new Vec3(x + dx, y, z + dz));
+}
 
 /**
  * Place a block at (x, y, z). params: { blockName: string, x, y, z }.
@@ -13,32 +27,45 @@ async function run(bot, state, params = {}) {
   const y = params.y ?? Math.floor(bot.entity.position.y);
   const z = params.z ?? Math.floor(bot.entity.position.z);
 
-  const below = new Vec3(x, y - 1, z);
-  const refBlock = bot.blockAt(below);
-  if (!refBlock || refBlock.name === 'air') {
-    return { success: false, reason: 'No solid block below place position.' };
-  }
-
   const item = bot.inventory.items().find((i) => i.name === blockName);
   if (!item) {
     return { success: false, reason: `No ${blockName} in inventory.` };
   }
 
-  try {
-    const goal = new GoalGetToBlock(below.x, below.y, below.z);
-    await bot.pathfinder.goto(goal);
-  } catch (e) {
-    return { success: false, reason: 'Could not reach position.' };
+  const positions = params.x != null && params.y != null && params.z != null
+    ? [new Vec3(x, y, z)]
+    : candidatePositions(x, y, z);
+
+  let lastErr = 'No valid placement surface nearby.';
+  for (const pos of positions) {
+    const below = pos.offset(0, -1, 0);
+    const refBlock = bot.blockAt(below);
+    const targetBlock = bot.blockAt(pos);
+    if (!refBlock || isAirLike(refBlock.name)) continue;
+    if (targetBlock && !isAirLike(targetBlock.name)) continue;
+
+    try {
+      const goal = new GoalNear(below.x, below.y, below.z, 2);
+      await bot.pathfinder.goto(goal);
+    } catch (e) {
+      lastErr = 'Could not reach placement spot.';
+      continue;
+    }
+
+    try {
+      await bot.equip(item, 'hand');
+      await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
+      return { success: true, reason: `Placed ${blockName} at (${pos.x}, ${pos.y}, ${pos.z}).` };
+    } catch (err) {
+      lastErr = err.message || 'Place failed.';
+      continue;
+    }
   }
 
-  const faceVector = new Vec3(0, 1, 0);
-  try {
-    await bot.equip(item, 'hand');
-    await bot.placeBlock(refBlock, faceVector);
-    return { success: true, reason: `Placed ${blockName}.` };
-  } catch (err) {
-    return { success: false, reason: err.message || 'Place failed.' };
+  if (/blockupdate|not allowed|cannot|can'?t place|protected|interact/i.test(String(lastErr).toLowerCase())) {
+    setBlackboard(state, 'regionProtected', true);
   }
+  return { success: false, reason: lastErr };
 }
 
 module.exports = { run };

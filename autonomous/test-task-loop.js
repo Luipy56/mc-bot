@@ -4,6 +4,7 @@
 /**
  * Hard-test the task loop without a live server: mock bot, run planner + executor.
  */
+console.log('[test-task-loop] Mock bot (no Minecraft): planner → executor; watch task ids below.');
 const { createState, markCompleted, isCompleted } = require('./lib/state');
 const { nextTask } = require('./lib/brain');
 const { createExecutor } = require('./lib/executor');
@@ -13,6 +14,7 @@ const skills = { goto_test: movementSkill };
 const state = createState();
 if (!isCompleted(state, 'init_structure')) markCompleted(state, 'init_structure');
 ['collect_wood', 'craft_planks', 'craft_sticks', 'craft_crafting_table', 'collect_cobblestone', 'craft_stone_pick',
+  'craft_wood_pick',
   'place_crafting_table', 'collect_more_wood', 'collect_coal', 'craft_chest', 'craft_furnace', 'craft_bed',
   'place_bed', 'place_chest', 'collect_wood_for_house', 'craft_house_planks', 'build_wooden_house',
   'equip_armor', 'equip_weapon',

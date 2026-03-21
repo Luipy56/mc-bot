@@ -4,12 +4,15 @@
 const { spawn } = require('child_process');
 const path = require('path');
 
+const yoloMode = process.argv.includes('--yolo') || process.env.YOLO === '1';
+
 const tests = [
   'state.test.js',
   'inventoryQuery.test.js',
   'perception.test.js',
   'planner.test.js',
   'executor.test.js',
+  'mining.test.js',
   'skills-survival.test.js',
   'persistence.test.js',
   'executor-timeout.test.js',
@@ -19,20 +22,27 @@ const tests = [
   'brain.test.js',
   'planner-roadmap.test.js',
   'kickReason.test.js',
+  'authSignals.test.js',
   'combat.test.js',
+  'hunting.test.js',
   'buildWoodenHouse.test.js',
   'diamondCave.test.js',
   'advancements.test.js',
 ];
+
+if (yoloMode) tests.push('integration-yolo.test.js');
 
 const dir = __dirname;
 let failed = 0;
 
 function runOne(file) {
   return new Promise((resolve) => {
+    const env = { ...process.env };
+    if (file === 'integration-yolo.test.js') env.YOLO = '1';
     const child = spawn(process.execPath, [path.join(dir, file)], {
       cwd: path.join(dir, '..'),
       stdio: ['ignore', 'pipe', 'pipe'],
+      env,
     });
     let out = '';
     let err = '';

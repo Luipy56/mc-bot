@@ -24,9 +24,17 @@ const LOG_NAMES = [
   'oak_log', 'birch_log', 'spruce_log', 'jungle_log', 'acacia_log', 'dark_oak_log',
   'mangrove_log', 'cherry_log',
 ];
+const PLANK_NAMES = [
+  'oak_planks', 'spruce_planks', 'birch_planks', 'jungle_planks', 'acacia_planks',
+  'dark_oak_planks', 'mangrove_planks', 'cherry_planks', 'bamboo_planks', 'crimson_planks', 'warped_planks',
+];
 
 function countAllLogs(bot) {
   return countItems(bot, LOG_NAMES);
 }
 
-module.exports = { countItems, hasItem, countAllLogs, LOG_NAMES };
+function countAllPlanks(bot) {
+  return countItems(bot, PLANK_NAMES);
+}
+
+module.exports = { countItems, hasItem, countAllLogs, countAllPlanks, LOG_NAMES, PLANK_NAMES };

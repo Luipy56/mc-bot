@@ -1,6 +1,27 @@
 'use strict';
 
 const { isCompleted } = require('./state');
+const { countAllLogs, countAllPlanks } = require('./inventoryQuery');
+
+const HUNT_WHEN_NO_FOOD_BELOW = parseInt(process.env.HUNT_WHEN_NO_FOOD_BELOW || '11', 10);
+const HUNT_STARTER_BELOW = parseInt(process.env.HUNT_STARTER_BELOW || '20', 10);
+const START_WOOD_TARGET = parseInt(process.env.START_WOOD_TARGET || '3', 10);
+const IGNORE_HUNGER_TASKS = /^(1|true|yes|on)$/i.test(process.env.IGNORE_HUNGER_TASKS || '');
+const HOUSE_PLANKS_NEEDED = parseInt(process.env.HOUSE_PLANKS_NEEDED || '112', 10);
+const HOUSE_LOG_TARGET = parseInt(
+  process.env.HOUSE_LOG_TARGET || String(Math.max(3, Math.ceil(HOUSE_PLANKS_NEEDED / 4) + 2)),
+  10
+);
+
+function housePlankName() {
+  return (process.env.HOUSE_PLANK_NAME || 'oak_planks').trim() || 'oak_planks';
+}
+
+function logNameFromPlanks(plankName) {
+  if (plankName === 'bamboo_planks') return 'bamboo_block';
+  if (plankName.endsWith('_planks')) return plankName.replace('_planks', '_log');
+  return 'oak_log';
+}
 
 /**
  * Roadmap only (no world sync). Call after syncProgressFromInventory + updateSituation.
@@ -10,6 +31,13 @@ function nextRoadmapTask(state, bot) {
 
   const completed = (id) => isCompleted(state, id);
   const hostiles = state.blackboard?.nearHostiles ?? 0;
+  const nearPassiveFood = state.blackboard?.nearPassiveFood ?? 0;
+  const hasFoodInInventory = Boolean(state.blackboard?.hasFoodInInventory);
+  const regionProtected = Boolean(state.blackboard?.regionProtected);
+  const logsInInv = bot ? countAllLogs(bot) : 0;
+  const planksInInv = bot ? countAllPlanks(bot) : 0;
+  const housePlanks = housePlankName();
+  const houseLog = logNameFromPlanks(housePlanks);
   const isNight = bot?.time && !bot.time.isDay;
   const dangerousNight = isNight && hostiles >= 2;
 
@@ -27,8 +55,37 @@ function nextRoadmapTask(state, bot) {
     return { taskId: 'goto_test', params: { x: gx, y: gy, z: gz }, reason: 'Pathfind to spawn / anchor point.' };
   }
 
-  if (bot && bot.food < (dangerousNight ? 12 : 10)) {
-    return { taskId: 'eat_if_needed', params: { minFood: dangerousNight ? 14 : 10 }, reason: dangerousNight ? 'Food low + danger; eat.' : 'Food low; eat first.' };
+  if (!IGNORE_HUNGER_TASKS) {
+    const eatThreshold = dangerousNight ? 12 : 10;
+    const huntNoFoodThreshold = Math.max(eatThreshold, HUNT_WHEN_NO_FOOD_BELOW);
+    if (bot && bot.food < eatThreshold && hasFoodInInventory) {
+      return {
+        taskId: 'eat_if_needed',
+        params: { minFood: dangerousNight ? 14 : 10 },
+        reason: dangerousNight ? 'Food low + danger; eat.' : 'Food low; eat first.',
+      };
+    }
+    if (bot && bot.food < huntNoFoodThreshold && !hasFoodInInventory && nearPassiveFood >= 1) {
+      return {
+        taskId: 'hunt_food',
+        params: { maxDistance: 34, minMeat: 1, eatBelow: 20 },
+        reason: 'Food is low and inventory has no edible items; hunt passive mobs for meat.',
+      };
+    }
+    if (bot && bot.food < huntNoFoodThreshold && !hasFoodInInventory && nearPassiveFood === 0) {
+      return {
+        taskId: 'explore_nearby',
+        params: { forTask: 'hunt_food' },
+        reason: 'No food and no passive mobs loaded; explore to find animals.',
+      };
+    }
+    if (!completed('hunt_food') && bot && bot.food <= HUNT_STARTER_BELOW && nearPassiveFood >= 1) {
+      return {
+        taskId: 'hunt_food',
+        params: { maxDistance: 30, minMeat: 1, eatBelow: 20 },
+        reason: 'Nearby passive mobs detected; secure starter food like a real player.',
+      };
+    }
   }
 
   if (dangerousNight && completed('place_bed')) {
@@ -36,7 +93,7 @@ function nextRoadmapTask(state, bot) {
   }
 
   if (!completed('collect_wood')) {
-    return { taskId: 'collect_wood', params: { blockName: 'oak_log', count: 8 }, reason: 'Need wood for tools and table.' };
+    return { taskId: 'collect_wood', params: { blockName: 'oak_log', count: START_WOOD_TARGET }, reason: 'Need starter wood for tools and crafting table.' };
   }
   if (!completed('craft_planks')) {
     return { taskId: 'craft_planks', params: { itemName: 'oak_planks', count: 4 }, reason: 'Planks from logs.' };
@@ -47,14 +104,29 @@ function nextRoadmapTask(state, bot) {
   if (!completed('craft_crafting_table')) {
     return { taskId: 'craft_crafting_table', params: { itemName: 'crafting_table', count: 1 }, reason: 'Crafting table for 3x3.' };
   }
+  if (!completed('place_crafting_table') && regionProtected) {
+    return {
+      taskId: 'explore_nearby',
+      params: { forTask: 'place_crafting_table' },
+      reason: 'Protected area blocks placement; move farther before placing crafting table.',
+    };
+  }
+  if (!completed('place_crafting_table')) {
+    return { taskId: 'place_crafting_table', params: { blockName: 'crafting_table' }, reason: 'Place table to unlock 3x3 recipes.' };
+  }
+  if (!completed('craft_wood_pick')) {
+    const potentialPlanks = planksInInv + (logsInInv * 4);
+    if (potentialPlanks < 5) {
+      const needLogs = Math.max(START_WOOD_TARGET, 3);
+      return { taskId: 'collect_wood', params: { blockName: 'oak_log', count: needLogs }, reason: 'Need a bit more wood to craft sticks + wooden pickaxe.' };
+    }
+    return { taskId: 'craft_wood_pick', params: { itemName: 'wooden_pickaxe', count: 1 }, reason: 'Wooden pickaxe needed to mine stone into cobblestone.' };
+  }
   if (!completed('collect_cobblestone')) {
     return { taskId: 'collect_cobblestone', params: { blockName: 'cobblestone', count: 4 }, reason: 'Cobblestone for stone pick.' };
   }
   if (!completed('craft_stone_pick')) {
     return { taskId: 'craft_stone_pick', params: { itemName: 'stone_pickaxe', count: 1 }, reason: 'Stone pickaxe for mining.' };
-  }
-  if (!completed('place_crafting_table')) {
-    return { taskId: 'place_crafting_table', params: { blockName: 'crafting_table' }, reason: 'Place table for future crafts.' };
   }
   if (!completed('collect_more_wood')) {
     return { taskId: 'collect_more_wood', params: { blockName: 'oak_log', count: 16 }, reason: 'More wood for base and sticks.' };
@@ -80,22 +152,29 @@ function nextRoadmapTask(state, bot) {
   if (!completed('collect_wood_for_house')) {
     return {
       taskId: 'collect_wood_for_house',
-      params: { blockName: 'oak_log', count: 32 },
-      reason: 'Gather logs to craft planks for wooden house (~112 planks).',
+      params: { blockName: houseLog, count: HOUSE_LOG_TARGET, countAsNames: [houseLog], exactName: houseLog },
+      reason: `Gather ${houseLog} to craft ${housePlanks} for wooden house (~${HOUSE_PLANKS_NEEDED} planks).`,
     };
   }
   if (!completed('craft_house_planks')) {
     return {
       taskId: 'craft_house_planks',
-      params: {},
-      reason: 'Craft oak planks for wooden house shell.',
+      params: { plankName: housePlanks, strict: true, minPlanks: HOUSE_PLANKS_NEEDED },
+      reason: `Craft ${housePlanks} for wooden house shell.`,
+    };
+  }
+  if (!completed('build_wooden_house') && regionProtected) {
+    return {
+      taskId: 'explore_nearby',
+      params: { forTask: 'build_wooden_house' },
+      reason: 'Protected area blocks building; move farther before house construction.',
     };
   }
   if (!completed('build_wooden_house')) {
     return {
       taskId: 'build_wooden_house',
-      params: {},
-      reason: 'Build wooden house (floor, walls, roof) near spawn.',
+      params: { plankName: housePlanks, minPlanks: HOUSE_PLANKS_NEEDED },
+      reason: `Build wooden house (floor, walls, roof) using ${housePlanks}.`,
     };
   }
   if (bot && bot.time && !bot.time.isDay && (bot.time.timeOfDay ?? 0) >= 12500) {
@@ -106,9 +185,9 @@ function nextRoadmapTask(state, bot) {
   }
   if (!completed('equip_weapon')) {
     return { taskId: 'equip_weapon', params: {}, reason: 'Equip best weapon before combat phases.' };
-  if (!completed('kill_enemy')) {
-    return { taskId: 'kill_enemy', params: {}, reason: 'Kill a nearby hostile mob for loot/XP.' };
   }
+  if (!completed('kill_enemy') && hostiles > 0) {
+    return { taskId: 'kill_enemy', params: {}, reason: 'Hostile mob nearby; secure area and gain loot/XP.' };
   }
 
   if (!completed('place_furnace')) {

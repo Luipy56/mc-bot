@@ -1,7 +1,26 @@
 'use strict';
 
-const { hasItem, countAllLogs, countItems } = require('./inventoryQuery');
+const { hasItem, countAllLogs, countAllPlanks, countItems } = require('./inventoryQuery');
 const { markCompleted, isCompleted, setBlackboard } = require('./state');
+const { PASSIVE_FOOD_MOBS, hasEdibleFood } = require('./food');
+
+const START_WOOD_TARGET = parseInt(process.env.START_WOOD_TARGET || '3', 10);
+const HOUSE_PLANKS_NEEDED = parseInt(process.env.HOUSE_PLANKS_NEEDED || '112', 10);
+const HOUSE_LOG_TARGET = parseInt(
+  process.env.HOUSE_LOG_TARGET || String(Math.max(3, Math.ceil(HOUSE_PLANKS_NEEDED / 4) + 2)),
+  10
+);
+
+function housePlankName() {
+  return (process.env.HOUSE_PLANK_NAME || 'oak_planks').trim() || 'oak_planks';
+}
+
+function houseLogName() {
+  const plank = housePlankName();
+  if (plank === 'bamboo_planks') return 'bamboo_block';
+  if (plank.endsWith('_planks')) return plank.replace('_planks', '_log');
+  return 'oak_log';
+}
 
 const HOSTILE_NAMES = new Set([
   'zombie', 'zombie_villager', 'husk', 'drowned', 'skeleton', 'stray', 'creeper', 'spider',
@@ -26,13 +45,31 @@ function countNearbyHostiles(bot, radius = 20) {
   return n;
 }
 
+function countNearbyPassiveFoodMobs(bot, radius = 24) {
+  if (!bot || !bot.entity || !bot.entities) return 0;
+  const names = new Set(PASSIVE_FOOD_MOBS);
+  const pos = bot.entity.position;
+  let n = 0;
+  for (const id of Object.keys(bot.entities)) {
+    const e = bot.entities[id];
+    if (!e || !e.position || !e.name) continue;
+    if (!names.has(e.name)) continue;
+    if (e.position.distanceTo(pos) > radius) continue;
+    n++;
+  }
+  return n;
+}
+
 /**
  * Update blackboard with world snapshot for planner.
  */
 function updateSituation(bot, state) {
   if (!bot || !state) return;
   const hostiles = countNearbyHostiles(bot, 20);
+  const passives = countNearbyPassiveFoodMobs(bot, 28);
   setBlackboard(state, 'nearHostiles', hostiles);
+  setBlackboard(state, 'nearPassiveFood', passives);
+  setBlackboard(state, 'hasFoodInInventory', hasEdibleFood(bot));
   setBlackboard(state, 'isDay', bot.time?.isDay !== false);
   setBlackboard(state, 'timeOfDay', bot.time?.timeOfDay ?? 0);
   if (bot.entity?.position) {
@@ -51,12 +88,15 @@ function syncProgressFromInventory(state, bot) {
     if (!isCompleted(state, id)) markCompleted(state, id);
   };
 
-  if (countAllLogs(bot) >= 8) done('collect_wood');
-  if (hasItem(bot, 'oak_planks', 4) || hasItem(bot, 'spruce_planks', 4) || hasItem(bot, 'birch_planks', 4)) {
+  if (countAllLogs(bot) >= START_WOOD_TARGET) done('collect_wood');
+  if (countAllPlanks(bot) >= 4) {
     done('craft_planks');
   }
   if (hasItem(bot, 'stick', 4)) done('craft_sticks');
   if (hasItem(bot, 'crafting_table', 1)) done('craft_crafting_table');
+  if (hasItem(bot, 'wooden_pickaxe', 1) || hasItem(bot, 'stone_pickaxe', 1) || hasItem(bot, 'iron_pickaxe', 1) || hasItem(bot, 'diamond_pickaxe', 1)) {
+    done('craft_wood_pick');
+  }
   if (hasItem(bot, 'cobblestone', 4)) done('collect_cobblestone');
   if (hasItem(bot, 'stone_pickaxe', 1) || hasItem(bot, 'iron_pickaxe', 1) || hasItem(bot, 'diamond_pickaxe', 1)) {
     done('craft_stone_pick');
@@ -64,8 +104,8 @@ function syncProgressFromInventory(state, bot) {
   if (countAllLogs(bot) >= 16) done('collect_more_wood');
   if (hasItem(bot, 'coal', 4) || hasItem(bot, 'charcoal', 4)) done('collect_coal');
   if (hasItem(bot, 'chest', 1)) done('craft_chest');
-  if (countAllLogs(bot) >= 32) done('collect_wood_for_house');
-  if (countItems(bot, 'oak_planks') >= 112) done('craft_house_planks');
+  if (countItems(bot, houseLogName()) >= HOUSE_LOG_TARGET) done('collect_wood_for_house');
+  if (countItems(bot, housePlankName()) >= HOUSE_PLANKS_NEEDED) done('craft_house_planks');
   if (hasItem(bot, 'furnace', 1)) done('craft_furnace');
   const bedNames = ['white_bed', 'red_bed', 'blue_bed', 'bed', 'orange_bed', 'yellow_bed', 'lime_bed', 'green_bed', 'cyan_bed', 'light_blue_bed', 'magenta_bed', 'purple_bed', 'pink_bed', 'gray_bed', 'light_gray_bed', 'black_bed', 'brown_bed'];
   if (bedNames.some((n) => hasItem(bot, n, 1))) done('craft_bed');
@@ -84,4 +124,4 @@ function syncProgressFromInventory(state, bot) {
   if (hasItem(bot, 'ender_eye', 12)) done('craft_eyes_of_ender');
 }
 
-module.exports = { countNearbyHostiles, updateSituation, syncProgressFromInventory, HOSTILE_NAMES };
+module.exports = { countNearbyHostiles, countNearbyPassiveFoodMobs, updateSituation, syncProgressFromInventory, HOSTILE_NAMES };

@@ -31,7 +31,7 @@ function formatKickReason(reason) {
 
 /** True if we should wait longer before reconnecting (server rate limits / duplicate session). */
 function kickNeedsSlowReconnect(formattedReason) {
-  return /wait|throttle|again|already playing|logged in from another|timeout exceeded/i.test(String(formattedReason || ''));
+  return /wait|throttle|again|already playing|logged in from another|timeout exceeded|wrong password|incorrect password|invalid password|contrasena|contraseña/i.test(String(formattedReason || ''));
 }
 
 module.exports = { formatKickReason, kickNeedsSlowReconnect };

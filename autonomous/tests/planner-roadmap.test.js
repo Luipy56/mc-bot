@@ -26,7 +26,7 @@ function testAfterWeaponComesFurnace() {
   const state = createState();
   const early = [
     'init_structure', 'connect', 'goto_test', 'collect_wood', 'craft_planks', 'craft_sticks',
-    'craft_crafting_table', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
+    'craft_crafting_table', 'craft_wood_pick', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
     'collect_more_wood', 'collect_coal', 'craft_chest', 'craft_furnace', 'craft_bed',
     'place_bed', 'place_chest', 'collect_wood_for_house', 'craft_house_planks', 'build_wooden_house',
     'equip_armor', 'equip_weapon',
@@ -40,7 +40,7 @@ function testAfterWeaponNotObsidianFirst() {
   const state = createState();
   markThrough(state, 'equip_weapon', [
     'init_structure', 'connect', 'goto_test', 'collect_wood', 'craft_planks', 'craft_sticks',
-    'craft_crafting_table', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
+    'craft_crafting_table', 'craft_wood_pick', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
     'collect_more_wood', 'collect_coal', 'craft_chest', 'craft_furnace', 'craft_bed',
     'place_bed', 'place_chest', 'collect_wood_for_house', 'craft_house_planks', 'build_wooden_house',
     'equip_armor', 'equip_weapon',
@@ -53,7 +53,7 @@ function testDiamondPickBeforeObsidian() {
   const state = createState();
   const upToIron = [
     'init_structure', 'connect', 'goto_test', 'collect_wood', 'craft_planks', 'craft_sticks',
-    'craft_crafting_table', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
+    'craft_crafting_table', 'craft_wood_pick', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
     'collect_more_wood', 'collect_coal', 'craft_chest', 'craft_furnace', 'craft_bed',
     'place_bed', 'place_chest', 'collect_wood_for_house', 'craft_house_planks', 'build_wooden_house',
     'equip_armor', 'equip_weapon',

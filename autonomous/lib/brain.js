@@ -6,11 +6,13 @@ const retry = require('./retryPolicy');
 const { setBlackboard } = require('./state');
 
 const STUCK_FAILURES_BEFORE_EXPLORE = parseInt(process.env.STUCK_FAILURES_BEFORE_EXPLORE || '2', 10);
+const IGNORE_RETREAT_TASKS = /^(1|true|yes|on)$/i.test(process.env.IGNORE_RETREAT_TASKS || '');
 
 /**
  * Critical survival: very low health + threats → retreat before anything else.
  */
 function criticalInterrupt(state, bot) {
+  if (IGNORE_RETREAT_TASKS) return null;
   if (!bot || bot.health == null) return null;
   const h = bot.health;
   const hostiles = state.blackboard?.nearHostiles ?? 0;
@@ -75,7 +77,7 @@ function onExploreSuccess(state, params) {
   const forTask = params?.forTask;
   if (forTask) retry.recordSuccess(state, forTask);
   const cur = state.blackboard?.miningMaxDistance ?? 32;
-  const next = Math.min(96, cur + 8);
+  const next = Math.min(192, cur + 12);
   setBlackboard(state, 'miningMaxDistance', next);
 }
 

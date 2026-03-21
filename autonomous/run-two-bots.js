@@ -11,6 +11,8 @@
  *
  * When both are online you should see chat like "Hi, Jarvys2!" / "Hi, Jarvys!". If the server
  * throttles connections, the second bot starts after 10s; increase the delay below if needed.
+ * For servers that require AuthMe-style login, set MC_LOGIN_CMD (and MC_LOGIN_CHAT_DELAY_MS) in .env
+ * so each process sends login before the public spawn line (see autonomous/bot.js).
  */
 const { spawn } = require('child_process');
 const path = require('path');

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+console.log('[Unit] diamondCave: module exports and ore search list, no live server.');
 const assert = require('assert');
 const dc = require('../skills/diamondCave');
 

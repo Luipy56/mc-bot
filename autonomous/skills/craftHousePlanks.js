@@ -1,18 +1,20 @@
 'use strict';
 
 const { GoalGetToBlock } = require('mineflayer-pathfinder').goals;
-const { countItems } = require('../lib/inventoryQuery');
+const { countItems, PLANK_NAMES } = require('../lib/inventoryQuery');
+const { setBlackboard } = require('../lib/state');
 
 const PLANKS_NEEDED = parseInt(process.env.HOUSE_PLANKS_NEEDED || '112', 10);
 const MAX_CRAFT_LOOPS = 40;
 
 /**
- * Craft oak_planks from logs until we have at least PLANKS_NEEDED (for wooden house).
+ * Craft planks from available logs until we have at least PLANKS_NEEDED (for wooden house).
  */
 async function run(bot, state, params = {}) {
   const need = Math.max(1, params.minPlanks ?? PLANKS_NEEDED);
-  const item = bot.registry?.itemsByName?.oak_planks;
-  if (!item) return { success: false, reason: 'Registry missing oak_planks.' };
+  const preferredFromEnv = (process.env.HOUSE_PLANK_NAME || '').trim();
+  const requested = (params.plankName || preferredFromEnv || '').trim();
+  const strict = params.strict === true || /^(1|true|yes)$/i.test(process.env.HOUSE_PLANK_STRICT || '');
 
   let table = null;
   const getTable = async () => {
@@ -27,33 +29,53 @@ async function run(bot, state, params = {}) {
     }
   };
 
+  // Planks recipe is 2x2 and does not require table, but if table exists nearby we can still use it.
   table = await getTable();
-  if (!table) return { success: false, reason: 'No crafting table in range.' };
 
-  let recipes = bot.recipesFor(item.id, null, 1, table) || [];
-  if (!recipes.length) return { success: false, reason: 'No oak_planks recipe at table.' };
-  const recipe = recipes[0];
+  const preferred = requested || state?.blackboard?.housePlankName;
+  const ordered = preferred
+    ? [preferred, ...PLANK_NAMES.filter((n) => n !== preferred)]
+    : [...PLANK_NAMES];
+
+  let plankName = null;
+  let recipe = null;
+  for (const name of ordered) {
+    const item = bot.registry?.itemsByName?.[name];
+    if (!item) continue;
+    const tableRecipes = bot.recipesFor(item.id, null, 1, table) || [];
+    const handRecipes = bot.recipesFor(item.id, null, 1, null) || [];
+    const recipes = tableRecipes.length > 0 ? tableRecipes : handRecipes;
+    if (recipes.length > 0) {
+      plankName = name;
+      recipe = recipes[0];
+      break;
+    }
+  }
+  if (strict && preferred && plankName !== preferred) {
+    return { success: false, reason: `Strict plank mode enabled; could not craft ${preferred}.` };
+  }
+  if (!plankName || !recipe) return { success: false, reason: 'No plank recipe available at table.' };
+  setBlackboard(state, 'housePlankName', plankName);
 
   let loops = 0;
-  while (countItems(bot, 'oak_planks') < need && loops < MAX_CRAFT_LOOPS) {
-    if (countItems(bot, 'oak_log') < 1) {
-      return {
-        success: false,
-        reason: `Need more logs; have ${countItems(bot, 'oak_planks')} planks / ${need}.`,
-      };
-    }
+  while (countItems(bot, plankName) < need && loops < MAX_CRAFT_LOOPS) {
+    const before = countItems(bot, plankName);
     try {
       await bot.craft(recipe, 1, table);
     } catch (e) {
       return { success: false, reason: e.message || 'Craft planks failed.' };
     }
+    const after = countItems(bot, plankName);
+    if (after <= before) {
+      return { success: false, reason: `Could not increase ${plankName}; likely out of logs.` };
+    }
     loops++;
   }
 
-  const have = countItems(bot, 'oak_planks');
+  const have = countItems(bot, plankName);
   return {
     success: have >= need,
-    reason: have >= need ? `Have ${have} oak planks.` : `Only ${have}/${need} planks after crafting.`,
+    reason: have >= need ? `Have ${have} ${plankName}.` : `Only ${have}/${need} ${plankName} after crafting.`,
   };
 }
 

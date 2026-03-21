@@ -51,3 +51,15 @@ const bot = mineflayer.createBot({
 ## Version support
 
 Mineflayer supports 1.8–1.21.11. Set `version` in createBot when the server uses a specific version (e.g. `1.21.11`).
+
+## Autonomous package (`mc-bot/autonomous`)
+
+- Load `.env` from the package root early (`dotenv` with `path.join(__dirname, '.env')` in `bot.js`) so `STATE_FILE` and other vars are visible before any `require` that reads `process.env` at load time.
+- **Username/host:** `NAME` / `SERVER_IP` / `PORT` / `VERSION` override `MC_HOST` / `MC_USERNAME` / `MC_PORT` / `MC_VERSION` (see `lib/config.js`). `VERSION=latest` is normalized to `1.21.11`.
+- **Server login plugins:** If chat is locked until login, set `MC_LOGIN_CMD` (e.g. `/login …`) and send it on **first spawn**, then send public spawn chat after `MC_LOGIN_CHAT_DELAY_MS` (same pattern as `viewer/bot.js`). Without this, the bot may connect but never “appear” in public chat.
+- **Online auth:** Set `MC_PASSWORD` (or `MC_PASS`) when using non-offline auth; pass it as `password` in `createBot`.
+- **Spawn chat:** Log every outgoing public message with a stable prefix (e.g. `[Bot] Chat:`) so operators and tests can confirm the bot is talking. Keep greeting configurable via `MC_SPAWN_CHAT`; autonomous default can differ from basic.
+- **Human-like movement:** Prefer `allow1by1towers=false` for pathfinder in autonomous unless explicitly needed; it avoids bot-like scaffold towers when chopping trees.
+- **Early survival realism:** Prioritize food like a real player: if hunger is low and inventory has no edible items, hunt nearby passive mobs (`cow/pig/chicken/sheep/rabbit`) and eat before resuming gather/craft roadmap.
+- **Mineflayer `spawn`:** May fire more than once (e.g. dimension changes). Run server login + public hello only once per connection; still refresh pathfinder movements on every spawn.
+- **Live smoke test:** `npm run test:yolo` (or `node tests/run-all.js --yolo`) runs `tests/integration-yolo.test.js` against a real server; requires `NAME`/`MC_USERNAME` and host in `.env`. Default `npm test` stays offline/unit-only.

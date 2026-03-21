@@ -59,7 +59,7 @@ function getFailureCount(state, taskId) {
  * Mining/gather tasks that benefit from exploration when stuck.
  */
 function isGatherTask(taskId) {
-  return /^(collect_|goto_test)/.test(taskId || '');
+  return /^(collect_|hunt_food|goto_test)/.test(taskId || '');
 }
 
 module.exports = {

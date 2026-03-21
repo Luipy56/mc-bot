@@ -39,7 +39,55 @@ function testEatWhenLowFood() {
   ['init_structure', 'connect', 'goto_test'].forEach((id) => markCompleted(state, id));
   const bot = mockBot({ food: 5 });
   const task = nextTask(state, bot);
+  assert.strictEqual(task.taskId, 'explore_nearby');
+}
+
+function testEatWhenLowFoodAndHasFood() {
+  const state = createState();
+  ['init_structure', 'connect', 'goto_test'].forEach((id) => markCompleted(state, id));
+  const bot = mockBot({
+    food: 5,
+    inventory: { items: () => [{ name: 'cooked_beef', count: 2 }] },
+  });
+  const task = nextTask(state, bot);
   assert.strictEqual(task.taskId, 'eat_if_needed');
+}
+
+function testNoEatLoopAtThreshold() {
+  const state = createState();
+  ['init_structure', 'connect', 'goto_test'].forEach((id) => markCompleted(state, id));
+  const bot = mockBot({
+    food: 10,
+    inventory: { items: () => [{ name: 'cooked_beef', count: 2 }] },
+  });
+  const task = nextTask(state, bot);
+  assert.notStrictEqual(task.taskId, 'eat_if_needed');
+}
+
+function testStarterHuntWhenPassiveNearby() {
+  const state = createState();
+  ['init_structure', 'connect', 'goto_test'].forEach((id) => markCompleted(state, id));
+  const bot = mockBot({
+    food: 20,
+    entities: {
+      1: { name: 'cow', position: { distanceTo: () => 4 } },
+    },
+  });
+  const task = nextTask(state, bot);
+  assert.strictEqual(task.taskId, 'hunt_food');
+}
+
+function testLowFoodHuntsWhenPassiveNearby() {
+  const state = createState();
+  ['init_structure', 'connect', 'goto_test'].forEach((id) => markCompleted(state, id));
+  const bot = mockBot({
+    food: 5,
+    entities: {
+      1: { name: 'pig', position: { distanceTo: () => 4 } },
+    },
+  });
+  const task = nextTask(state, bot);
+  assert.strictEqual(task.taskId, 'hunt_food');
 }
 
 function testCollectWoodWhenEnoughFood() {
@@ -76,7 +124,7 @@ function testInventorySyncSkipsCollectWood() {
 function testDangerousNightPrioritizesSleep() {
   const state = createState();
   ['init_structure', 'connect', 'goto_test', 'collect_wood', 'craft_planks', 'craft_sticks',
-    'craft_crafting_table', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
+    'craft_crafting_table', 'craft_wood_pick', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
     'collect_more_wood', 'collect_coal', 'craft_chest', 'craft_furnace', 'craft_bed', 'place_bed', 'place_chest'].forEach((id) => markCompleted(state, id));
   state.blackboard.nearHostiles = 3;
   const bot = mockBot({
@@ -96,8 +144,8 @@ function testIdleWhenAllDone() {
   const state = createState();
   const allTasks = [
     'init_structure', 'connect', 'goto_test', 'collect_wood', 'craft_planks', 'craft_sticks',
-    'craft_crafting_table', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
-    'collect_more_wood', 'collect_coal', 'craft_chest', 'craft_furnace', 'craft_bed',
+    'craft_crafting_table', 'craft_wood_pick', 'collect_cobblestone', 'craft_stone_pick', 'place_crafting_table',
+    'collect_more_wood', 'collect_coal', 'hunt_food', 'craft_chest', 'craft_furnace', 'craft_bed',
     'place_bed', 'place_chest', 'collect_wood_for_house', 'craft_house_planks', 'build_wooden_house',
     'equip_armor', 'equip_weapon',
     'place_furnace', 'collect_iron_ore', 'smelt_iron_ingots', 'craft_iron_pickaxe', 'craft_stone_shovel',
@@ -115,6 +163,10 @@ function run() {
   testNullState();
   testInitAndConnect();
   testEatWhenLowFood();
+  testEatWhenLowFoodAndHasFood();
+  testNoEatLoopAtThreshold();
+  testStarterHuntWhenPassiveNearby();
+  testLowFoodHuntsWhenPassiveNearby();
   testCollectWoodWhenEnoughFood();
   testGotoUsesSpawnFromBlackboard();
   testInventorySyncSkipsCollectWood();

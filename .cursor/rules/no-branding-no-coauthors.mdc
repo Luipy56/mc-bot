@@ -1,0 +1,11 @@
+---
+description: Keep commits and outputs free of branding and co-author tags
+alwaysApply: true
+---
+
+# Neutral Commit and Output Policy
+
+- Never add `Co-authored-by` lines unless the user explicitly requests them.
+- Never include `Cursor`, `cursor-agent`, or similar assistant/tool branding in commit messages, PR text, changelogs, or generated output.
+- Keep generated text neutral, concise, and task-focused.
+- If a template, hook, or automation injects branding, remove it before final output.

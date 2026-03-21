@@ -9,6 +9,7 @@
     "two": "node run-two-bots.js",
     "test": "node tests/run-all.js && node test-task-loop.js",
     "test:unit": "node tests/run-all.js",
+    "test:yolo": "node tests/run-all.js --yolo",
     "test:loop": "node test-task-loop.js"
   },
   "engines": {

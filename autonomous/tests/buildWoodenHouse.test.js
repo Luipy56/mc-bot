@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+console.log('[Unit] buildWoodenHouse: floor/wall/roof layout (112 positions), no live server.');
 const assert = require('assert');
 const { buildPositionList, WIDTH, DEPTH, WALL_HEIGHT } = require('../skills/buildWoodenHouse');
 
