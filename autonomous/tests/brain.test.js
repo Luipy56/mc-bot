@@ -27,6 +27,16 @@ function testCriticalRetreat() {
   assert.strictEqual(t.taskId, 'retreat');
 }
 
+function testEatBeforeRetreatWhenFoodInInventory() {
+  const state = createState();
+  state.blackboard.nearHostiles = 2;
+  state.blackboard.hasFoodInInventory = true;
+  const bot = mockBot({ health: 6, food: 10 });
+  const t = criticalInterrupt(state, bot);
+  assert.strictEqual(t.taskId, 'eat_if_needed');
+  assert.strictEqual(t.params.minFood, 14);
+}
+
 function testNoRetreatWhenSafe() {
   const state = createState();
   state.blackboard.nearHostiles = 0;
@@ -54,6 +64,7 @@ function testNoExploreWhenFresh() {
 
 function run() {
   testCriticalRetreat();
+  testEatBeforeRetreatWhenFoodInInventory();
   testNoRetreatWhenSafe();
   testExploreWhenStuck();
   testNoExploreWhenFresh();

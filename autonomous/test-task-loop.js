@@ -13,15 +13,19 @@ const movementSkill = require('./skills/movement');
 const skills = { goto_test: movementSkill };
 const state = createState();
 if (!isCompleted(state, 'init_structure')) markCompleted(state, 'init_structure');
-['collect_wood', 'craft_planks', 'craft_sticks', 'craft_crafting_table', 'collect_cobblestone', 'craft_stone_pick',
-  'craft_wood_pick',
-  'place_crafting_table', 'collect_more_wood', 'collect_coal', 'craft_chest', 'craft_furnace', 'craft_bed',
+['collect_wood', 'craft_planks', 'craft_sticks', 'craft_crafting_table', 'place_crafting_table', 'craft_wood_pick',
+  'collect_cobblestone', 'craft_stone_pick', 'lighten_inventory', 'craft_stone_sword', 'craft_stone_axe', 'craft_wood_axe',
+  'collect_more_wood', 'collect_coal', 'craft_torch', 'craft_chest', 'craft_furnace', 'craft_bed',
   'place_bed', 'place_chest', 'collect_wood_for_house', 'craft_house_planks', 'build_wooden_house',
   'equip_armor', 'equip_weapon',
-  'place_furnace', 'collect_iron_ore', 'smelt_iron_ingots', 'craft_iron_pickaxe', 'craft_stone_shovel',
+  'place_furnace', 'lighten_inventory', 'collect_iron_ore', 'smelt_iron_ingots', 'craft_iron_pickaxe', 'craft_shears',
+  'shear_sheep', 'craft_iron_sword',
+  'craft_iron_armor_set', 'equip_iron_kit', 'craft_iron_bucket', 'fill_water_bucket', 'place_water_source',
+  'craft_stone_shovel',
   'collect_gravel_for_flint', 'craft_flint_and_steel', 'collect_diamond_ore', 'craft_diamond_pickaxe',
   'collect_obsidian', 'build_nether_portal', 'enter_nether', 'collect_blaze_rods', 'collect_ender_pearls',
-  'craft_blaze_powder', 'craft_eyes_of_ender', 'find_stronghold', 'enter_end', 'kill_ender_dragon'].forEach((id) => markCompleted(state, id));
+  'craft_blaze_powder', 'craft_eyes_of_ender', 'find_stronghold', 'prep_end_combat', 'fill_end_portal',
+  'enter_end', 'destroy_end_crystals', 'kill_ender_dragon'].forEach((id) => markCompleted(state, id));
 const runTask = createExecutor(skills);
 
 const mockBot = {

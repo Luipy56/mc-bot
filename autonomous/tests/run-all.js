@@ -17,6 +17,7 @@ const tests = [
   'persistence.test.js',
   'executor-timeout.test.js',
   'situation.test.js',
+  'dimension.test.js',
   'weapons.test.js',
   'retryPolicy.test.js',
   'brain.test.js',
@@ -28,6 +29,13 @@ const tests = [
   'buildWoodenHouse.test.js',
   'diamondCave.test.js',
   'advancements.test.js',
+  'portalGeometry.test.js',
+  'strongholdTriangulation.test.js',
+  'roadmapPhases.test.js',
+  'blackboardSchema.test.js',
+  'jarvysVoice.test.js',
+  'playerSkillCatalog.test.js',
+  'humanPlayer.test.js',
 ];
 
 if (yoloMode) tests.push('integration-yolo.test.js');

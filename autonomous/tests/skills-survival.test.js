@@ -10,7 +10,10 @@ async function testEatWhenLowFood() {
     health: 20,
     inventory: { items: () => [{ name: 'bread', count: 2 }] },
     equip: () => Promise.resolve(),
-    consume: () => Promise.resolve(),
+    consume() {
+      this.food = Math.min(20, this.food + 6);
+      return Promise.resolve();
+    },
   };
   const state = {};
   const result = await survivalSkill.run(bot, state, { minFood: 10 });

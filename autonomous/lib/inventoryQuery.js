@@ -29,6 +29,14 @@ const PLANK_NAMES = [
   'dark_oak_planks', 'mangrove_planks', 'cherry_planks', 'bamboo_planks', 'crimson_planks', 'warped_planks',
 ];
 
+/** Wool item ids (dyed + legacy `wool`) for inventory checks. */
+const WOOL_NAMES = [
+  'white_wool', 'orange_wool', 'magenta_wool', 'light_blue_wool', 'yellow_wool',
+  'lime_wool', 'pink_wool', 'gray_wool', 'light_gray_wool', 'cyan_wool',
+  'purple_wool', 'blue_wool', 'brown_wool', 'green_wool', 'red_wool', 'black_wool',
+  'wool',
+];
+
 function countAllLogs(bot) {
   return countItems(bot, LOG_NAMES);
 }
@@ -37,4 +45,4 @@ function countAllPlanks(bot) {
   return countItems(bot, PLANK_NAMES);
 }
 
-module.exports = { countItems, hasItem, countAllLogs, countAllPlanks, LOG_NAMES, PLANK_NAMES };
+module.exports = { countItems, hasItem, countAllLogs, countAllPlanks, LOG_NAMES, PLANK_NAMES, WOOL_NAMES };

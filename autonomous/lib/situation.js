@@ -1,7 +1,9 @@
 'use strict';
 
-const { hasItem, countAllLogs, countAllPlanks, countItems } = require('./inventoryQuery');
-const { markCompleted, isCompleted, setBlackboard } = require('./state');
+const Vec3 = require('vec3');
+const { hasItem, countAllLogs, countAllPlanks, countItems, WOOL_NAMES } = require('./inventoryQuery');
+const { isInNether } = require('./dimension');
+const { markCompleted, unmarkCompleted, isCompleted, setBlackboard } = require('./state');
 const { PASSIVE_FOOD_MOBS, hasEdibleFood } = require('./food');
 
 const START_WOOD_TARGET = parseInt(process.env.START_WOOD_TARGET || '3', 10);
@@ -97,31 +99,118 @@ function syncProgressFromInventory(state, bot) {
   if (hasItem(bot, 'wooden_pickaxe', 1) || hasItem(bot, 'stone_pickaxe', 1) || hasItem(bot, 'iron_pickaxe', 1) || hasItem(bot, 'diamond_pickaxe', 1)) {
     done('craft_wood_pick');
   }
-  if (hasItem(bot, 'cobblestone', 4)) done('collect_cobblestone');
+  if (hasItem(bot, 'cobblestone', 16)) done('collect_cobblestone');
   if (hasItem(bot, 'stone_pickaxe', 1) || hasItem(bot, 'iron_pickaxe', 1) || hasItem(bot, 'diamond_pickaxe', 1)) {
     done('craft_stone_pick');
   }
   if (countAllLogs(bot) >= 16) done('collect_more_wood');
   if (hasItem(bot, 'coal', 4) || hasItem(bot, 'charcoal', 4)) done('collect_coal');
+  if (countItems(bot, 'torch') >= 8) done('craft_torch');
+  if (hasItem(bot, 'stone_sword', 1)) done('craft_stone_sword');
+  if (hasItem(bot, 'stone_axe', 1)) done('craft_stone_axe');
+  if (hasItem(bot, 'wooden_axe', 1) || hasItem(bot, 'stone_axe', 1)) done('craft_wood_axe');
   if (hasItem(bot, 'chest', 1)) done('craft_chest');
   if (countItems(bot, houseLogName()) >= HOUSE_LOG_TARGET) done('collect_wood_for_house');
   if (countItems(bot, housePlankName()) >= HOUSE_PLANKS_NEEDED) done('craft_house_planks');
   if (hasItem(bot, 'furnace', 1)) done('craft_furnace');
   const bedNames = ['white_bed', 'red_bed', 'blue_bed', 'bed', 'orange_bed', 'yellow_bed', 'lime_bed', 'green_bed', 'cyan_bed', 'light_blue_bed', 'magenta_bed', 'purple_bed', 'pink_bed', 'gray_bed', 'light_gray_bed', 'black_bed', 'brown_bed'];
   if (bedNames.some((n) => hasItem(bot, n, 1))) done('craft_bed');
-  if (countItems(bot, 'raw_iron') >= 12 || countItems(bot, 'iron_ore') >= 12) done('collect_iron_ore');
-  if (hasItem(bot, 'iron_ingot', 8)) done('smelt_iron_ingots');
+  if (countItems(bot, ['raw_iron', 'iron_ore']) >= 40) done('collect_iron_ore');
+  if (hasItem(bot, 'iron_ingot', 35)) done('smelt_iron_ingots');
   if (hasItem(bot, 'iron_pickaxe', 1)) done('craft_iron_pickaxe');
+  if (hasItem(bot, 'shears', 1)) done('craft_shears');
+  if (countItems(bot, WOOL_NAMES) >= 1) done('shear_sheep');
+  if (countItems(bot, 'wheat_seeds') >= 4) done('collect_grass_seeds');
+  if (hasItem(bot, 'stone_hoe', 1)) done('craft_stone_hoe');
+  if (countItems(bot, 'wheat') >= 3) done('harvest_mature_wheat');
+  if (hasItem(bot, 'bread', 1)) done('craft_bread');
+  if (hasItem(bot, 'milk_bucket', 1)) done('milk_cow');
+  if (hasItem(bot, 'sand', 16)) done('collect_sand');
+  if (hasItem(bot, 'glass', 8)) done('smelt_glass');
+  if (hasItem(bot, 'sugar_cane', 9)) done('collect_sugar_cane');
+  if (hasItem(bot, 'paper', 3)) done('craft_paper');
+  if (hasItem(bot, 'fishing_rod', 1)) done('craft_fishing_rod');
+  if (hasItem(bot, 'iron_sword', 1)) done('craft_iron_sword');
+  if (
+    hasItem(bot, 'iron_boots', 1)
+    && hasItem(bot, 'iron_helmet', 1)
+    && hasItem(bot, 'iron_leggings', 1)
+    && hasItem(bot, 'iron_chestplate', 1)
+  ) {
+    done('craft_iron_armor_set');
+  }
+  if (hasItem(bot, 'bucket', 1) || hasItem(bot, 'water_bucket', 1)) done('craft_iron_bucket');
+  if (hasItem(bot, 'water_bucket', 1)) done('fill_water_bucket');
+  const jw = state.blackboard?.jarvysWaterWell;
+  if (jw && jw.x != null && jw.y != null && jw.z != null && typeof bot.blockAt === 'function') {
+    const wb = bot.blockAt(new Vec3(jw.x, jw.y, jw.z));
+    if (wb && wb.name === 'water') done('place_water_source');
+  }
   if (hasItem(bot, 'stone_shovel', 1) || hasItem(bot, 'iron_shovel', 1)) done('craft_stone_shovel');
   if (hasItem(bot, 'flint', 2)) done('collect_gravel_for_flint');
   if (hasItem(bot, 'flint_and_steel', 1)) done('craft_flint_and_steel');
   if (hasItem(bot, 'diamond', 3)) done('collect_diamond_ore');
   if (hasItem(bot, 'diamond_pickaxe', 1)) done('craft_diamond_pickaxe');
   if (hasItem(bot, 'obsidian', 10)) done('collect_obsidian');
+  if (isInNether(bot)) done('enter_nether');
   if (hasItem(bot, 'blaze_rod', 6)) done('collect_blaze_rods');
   if (hasItem(bot, 'ender_pearl', 12)) done('collect_ender_pearls');
   if (hasItem(bot, 'blaze_powder', 12)) done('craft_blaze_powder');
   if (hasItem(bot, 'ender_eye', 12)) done('craft_eyes_of_ender');
 }
 
-module.exports = { countNearbyHostiles, countNearbyPassiveFoodMobs, updateSituation, syncProgressFromInventory, HOSTILE_NAMES };
+/**
+ * Drop stale progress flags when inventory/world no longer matches (e.g. lost crafting table after reload).
+ */
+function reconcileProgressWithInventory(state, bot) {
+  if (!state || !bot) return;
+
+  // Table crafted in progress file but item lost before placement — re-run craft + place.
+  if (
+    isCompleted(state, 'craft_crafting_table')
+    && !hasItem(bot, 'crafting_table', 1)
+    && !isCompleted(state, 'place_crafting_table')
+  ) {
+    unmarkCompleted(state, 'craft_crafting_table');
+    unmarkCompleted(state, 'place_crafting_table');
+  }
+
+  // Placed flag set but no nearby table (picked up / grief) — redo craft when possible.
+  if (isCompleted(state, 'place_crafting_table') && !hasItem(bot, 'crafting_table', 1)) {
+    if (typeof bot.findBlock === 'function') {
+      const placed = bot.findBlock({ matching: (b) => b.name === 'crafting_table', maxDistance: 40 });
+      if (!placed) {
+        unmarkCompleted(state, 'place_crafting_table');
+        if (isCompleted(state, 'craft_crafting_table')) unmarkCompleted(state, 'craft_crafting_table');
+      }
+    }
+  }
+
+  // After table flags are fixed: sticks consume planks; stale "craft_planks" with <4 planks breaks table craft.
+  // Must run after unmarking craft_crafting_table when the item was lost (death/drop), or this block is skipped wrongly.
+  if (!hasItem(bot, 'crafting_table', 1)) {
+    const planks = countAllPlanks(bot);
+    const logs = countAllLogs(bot);
+    const potentialPlanks = planks + logs * 4;
+    if (!isCompleted(state, 'craft_crafting_table') && planks < 4) {
+      unmarkCompleted(state, 'craft_planks');
+      if (potentialPlanks < 4) unmarkCompleted(state, 'collect_wood');
+    }
+    if (
+      !hasItem(bot, 'stick', 4)
+      && !isCompleted(state, 'craft_wood_pick')
+      && !isCompleted(state, 'place_crafting_table')
+    ) {
+      unmarkCompleted(state, 'craft_sticks');
+    }
+  }
+}
+
+module.exports = {
+  countNearbyHostiles,
+  countNearbyPassiveFoodMobs,
+  updateSituation,
+  syncProgressFromInventory,
+  reconcileProgressWithInventory,
+  HOSTILE_NAMES,
+};

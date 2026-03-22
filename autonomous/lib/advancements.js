@@ -147,7 +147,10 @@ function getNextTaskForAdvancement(state, bot) {
     'build_crop_farm',
     'enter_nether',
     'find_stronghold',
+    'prep_end_combat',
+    'fill_end_portal',
     'enter_end',
+    'destroy_end_crystals',
     'kill_ender_dragon',
   ];
   for (const taskId of taskOrder) {

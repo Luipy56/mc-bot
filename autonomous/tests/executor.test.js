@@ -7,12 +7,14 @@ const { createExecutor } = require('../lib/executor');
 const movementSkill = require('../skills/movement');
 
 const mockBot = () => ({
-  entity: { position: { x: 0, y: 64, z: 0 } },
+  entity: { position: { x: 0, y: 64, z: 0 }, yaw: 0, pitch: 0 },
   health: 20,
   food: 20,
   time: { timeOfDay: 6000, isDay: true },
   inventory: { items: () => [] },
   pathfinder: { goto: () => Promise.resolve(), setGoal: () => {} },
+  look: async () => {},
+  swingArm: () => {},
 });
 
 async function testIdleTask() {

@@ -7,13 +7,17 @@
  * Loads pathfinder and runs task loop after spawn.
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+const fs = require('fs');
+const path = require('path');
+
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const mineflayer = require('mineflayer');
 const pathfinder = require('mineflayer-pathfinder').pathfinder;
 const Movements = require('mineflayer-pathfinder').Movements;
 
 const { getConfig } = require('./lib/config');
+const { buildExtraPlayerSkills } = require('./lib/extraPlayerSkills');
 const { createState, markCompleted, isCompleted, setBlackboard } = require('./lib/state');
 const { nextTask } = require('./lib/brain');
 const { createExecutor } = require('./lib/executor');
@@ -21,6 +25,7 @@ const { loadState, saveState } = require('./lib/persistence');
 const { formatKickReason, kickNeedsSlowReconnect } = require('./lib/kickReason');
 const { detectAuthSignal } = require('./lib/authSignals');
 const { getCompleted, getIncomplete, getNextTaskForAdvancement } = require('./lib/advancements');
+const jarvysVoice = require('./lib/jarvysVoice');
 const movementSkill = require('./skills/movement');
 const miningSkill = require('./skills/mining');
 const craftingSkill = require('./skills/crafting');
@@ -40,6 +45,17 @@ const huntingSkill = require('./skills/hunting');
 
 const combatSkill = require('./skills/combat');
 const diamondCaveSkill = require('./skills/diamondCave');
+const buildPotatoFarmSkill = require('./skills/buildPotatoFarm');
+const collectPotatoesSkill = require('./skills/collectPotatoes');
+const prepEndCombatSkill = require('./skills/prepEndCombat');
+const shortcutGearSkill = require('./skills/shortcutGear');
+const postgameSkill = require('./skills/postgame');
+const inventoryTrimSkill = require('./skills/inventoryTrim');
+const gearCraftSkill = require('./skills/gearCraft');
+const gearApplySkill = require('./skills/gearApply');
+const fillWaterBucketSkill = require('./skills/fillWaterBucket');
+const placeWaterWellSkill = require('./skills/placeWaterWell');
+const shearSheepSkill = require('./skills/shearSheep');
 const config = getConfig();
 
 const skills = {
@@ -86,10 +102,44 @@ const skills = {
   craft_blaze_powder: craftingSkill,
   craft_eyes_of_ender: endSkill,
   find_stronghold: endSkill,
+  fill_end_portal: endSkill,
   enter_end: endSkill,
+  destroy_end_crystals: endSkill,
   kill_ender_dragon: endSkill,
   kill_enemy: combatSkill,
+  build_potato_farm: buildPotatoFarmSkill,
+  collect_potatoes: collectPotatoesSkill,
+  smelt_baked_potatoes: smeltingSkill,
+  prep_end_combat: prepEndCombatSkill,
+  shortcut_villager: shortcutGearSkill,
+  shortcut_enchant: shortcutGearSkill,
+  shortcut_brew: shortcutGearSkill,
+  postgame_end_city: postgameSkill,
+  postgame_wither_prep: postgameSkill,
+  lighten_inventory: inventoryTrimSkill,
+  craft_stone_sword: craftingSkill,
+  craft_stone_axe: craftingSkill,
+  craft_wood_axe: craftingSkill,
+  craft_torch: craftingSkill,
+  craft_iron_sword: craftingSkill,
+  craft_iron_armor_set: gearCraftSkill,
+  equip_iron_kit: gearApplySkill,
+  craft_iron_bucket: craftingSkill,
+  fill_water_bucket: fillWaterBucketSkill,
+  place_water_source: placeWaterWellSkill,
+  craft_shears: craftingSkill,
+  shear_sheep: shearSheepSkill,
 };
+
+Object.assign(
+  skills,
+  buildExtraPlayerSkills({
+    craftingSkill,
+    miningSkill,
+    smeltingSkill,
+    existingIds: new Set(Object.keys(skills)),
+  })
+);
 
 const state = createState();
 loadState(state);
@@ -178,6 +228,8 @@ function scheduleLoop() {
           console.log('[Agent] Task:', task.taskId, '—', task.reason);
           const result = await runTask(bot, state, task);
           console.log('[Agent] Result:', result.success ? 'ok' : 'fail', result.reason);
+          jarvysVoice.afterTask(bot, state, { task, result });
+          if (typeof bot._applyMovementRules === 'function') bot._applyMovementRules();
           maybeTriggerRtpSearch(task, result);
           saveState(state);
           if (task.taskId === 'idle') break;
@@ -210,13 +262,22 @@ function createBot() {
   let registerAttempts = 0;
   let authRequired = false;
   let authReady = false;
+  let loginPromptRepeat = 0;
   const pendingPublicChat = [];
 
   const spawnMsg = (process.env.MC_SPAWN_CHAT || '').trim() || '0/';
   const loginDelayMs = parseInt(process.env.MC_LOGIN_CHAT_DELAY_MS || '600', 10);
   const spawnChatDelayMs = parseInt(process.env.MC_SPAWN_CHAT_DELAY_MS || '1600', 10);
   const loginCmdFromEnv = (process.env.MC_LOGIN_CMD || '').trim();
-  const authPassword = (process.env.MC_AUTH_PASSWORD || process.env.MC_AUTHME_PASSWORD || process.env.MC_LOGIN_PASSWORD || '').trim();
+  let authPassword = (process.env.MC_AUTH_PASSWORD || process.env.MC_AUTHME_PASSWORD || process.env.MC_LOGIN_PASSWORD || '').trim();
+  const authPasswordFile = (process.env.MC_AUTH_PASSWORD_FILE || '').trim();
+  if (!authPassword && authPasswordFile) {
+    try {
+      authPassword = fs.readFileSync(authPasswordFile, 'utf8').trim();
+    } catch (e) {
+      console.warn('[Auth] Could not read MC_AUTH_PASSWORD_FILE:', e.message);
+    }
+  }
   const autoAuthEnabled = parseBool(process.env.MC_AUTO_AUTH, true);
   const autoRegisterEnabled = parseBool(process.env.MC_AUTO_REGISTER, false);
   const maxLoginAttempts = Math.max(1, parseInt(process.env.MC_MAX_LOGIN_ATTEMPTS || '4', 10));
@@ -253,10 +314,13 @@ function createBot() {
   function applyMovementRules() {
     if (bot !== connectionBot || !connectionBot.pathfinder) return;
     const move = new Movements(connectionBot);
-    move.canDig = !Boolean(state.blackboard?.regionProtected);
+    const untilOutfield = !isCompleted(state, 'goto_test');
+    move.canDig = !Boolean(state.blackboard?.regionProtected) && !untilOutfield;
     move.allow1by1towers = allow1by1Towers;
     connectionBot.pathfinder.setMovements(move);
   }
+
+  connectionBot._applyMovementRules = applyMovementRules;
 
   function setProtectedMode(enabled, reason = '') {
     const nowEnabled = Boolean(enabled);
@@ -351,6 +415,7 @@ function createBot() {
     setBlackboard(state, 'authRequired', true);
     setBlackboard(state, 'authReady', false);
     console.warn('[Auth] Login required by server but no MC_LOGIN_CMD/MC_AUTH_PASSWORD configured. Source:', source);
+    console.warn('[Auth] Set MC_AUTH_PASSWORD, MC_LOGIN_CMD, or MC_AUTH_PASSWORD_FILE in autonomous/.env (see .env.example).');
   }
 
   function maybeSendLogin(source) {
@@ -408,24 +473,40 @@ function createBot() {
         scheduleAmbientAction();
         return;
       }
+      if (authRequired && !authReady) {
+        scheduleAmbientAction();
+        return;
+      }
+      const humanVerbose = /^(1|true|yes|on)$/i.test(process.env.HUMAN_DEBUG || '');
       const roll = Math.random();
-      if (roll < 0.6) {
+      if (roll < 0.52) {
         const yaw = connectionBot.entity.yaw + (Math.random() - 0.5) * 1.2;
         const pitch = Math.max(-1.2, Math.min(1.2, connectionBot.entity.pitch + (Math.random() - 0.5) * 0.4));
         connectionBot.look(yaw, pitch, true).catch(() => {});
-        console.log('[Human] Looking around.');
-      } else if (roll < 0.8) {
+        if (humanVerbose) console.log('[Human] Looking around.');
+      } else if (roll < 0.68) {
         connectionBot.setControlState('jump', true);
         setTimeout(() => {
           if (bot === connectionBot) connectionBot.setControlState('jump', false);
         }, randomBetween(120, 260));
-        console.log('[Human] Jump.');
-      } else {
+        if (humanVerbose) console.log('[Human] Jump.');
+      } else if (roll < 0.82) {
         connectionBot.setControlState('sneak', true);
         setTimeout(() => {
           if (bot === connectionBot) connectionBot.setControlState('sneak', false);
         }, randomBetween(250, 600));
-        console.log('[Human] Sneak.');
+        if (humanVerbose) console.log('[Human] Sneak.');
+      } else if (roll < 0.9 && typeof connectionBot.swingArm === 'function') {
+        try {
+          connectionBot.swingArm('right', true);
+        } catch (e) { /* ignore */ }
+        if (humanVerbose) console.log('[Human] Arm swing.');
+      } else {
+        connectionBot.setControlState('forward', true);
+        setTimeout(() => {
+          if (bot === connectionBot) connectionBot.setControlState('forward', false);
+        }, randomBetween(140, 380));
+        if (humanVerbose) console.log('[Human] Short step.');
       }
       scheduleAmbientAction();
     }, waitMs);
@@ -445,6 +526,7 @@ function createBot() {
     const p = connectionBot.entity.position;
     setBlackboard(state, 'spawnPos', { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) });
     console.log('[Bot] Spawned at', p);
+    loginPromptRepeat = 0;
 
     if (!hasAnnouncedPresence) {
       hasAnnouncedPresence = true;
@@ -476,7 +558,18 @@ function createBot() {
   bot.on('messagestr', (line) => {
     const msg = String(line || '').trim();
     if (!msg) return;
-    console.log('[Server]', msg);
+
+    if (/please,\s*login with/i.test(msg)) {
+      loginPromptRepeat += 1;
+      if (loginPromptRepeat === 1) {
+        console.log('[Server]', msg);
+      } else if (loginPromptRepeat % 10 === 0) {
+        console.log('[Server] (login prompt repeated', loginPromptRepeat, 'times — configure MC_AUTH_PASSWORD or MC_LOGIN_CMD)');
+      }
+    } else {
+      loginPromptRepeat = 0;
+      console.log('[Server]', msg);
+    }
 
     if (/move a little more before you can chat|we get lots of spam bots here|spawn protection/i.test(msg)) {
       setProtectedMode(true, 'spawn anti-spam/protection');
@@ -532,6 +625,7 @@ function createBot() {
       setBlackboard(state, 'authReady', true);
       console.log('[Auth] Login acknowledged by server.');
       flushPendingChat();
+      scheduleAmbientAction();
       return;
     }
 
@@ -546,6 +640,9 @@ function createBot() {
 
   bot.on('death', () => {
     console.log('[Bot] Died.');
+    try {
+      jarvysVoice.onDeath(connectionBot, state);
+    } catch (e) { /* ignore */ }
     try { connectionBot.pathfinder?.setGoal(null); } catch (e) {}
   });
 
@@ -631,6 +728,9 @@ function createBot() {
     console.log('[Bot] Kicked:', lastKickReason);
     if (/wrong password|incorrect password|invalid password|contrasena|contraseña/i.test(lastKickReason)) {
       console.error('[Auth] Wrong password. Configure MC_LOGIN_CMD or MC_AUTH_PASSWORD in autonomous/.env');
+    }
+    if (/login timeout|please log in|authenticate/i.test(lastKickReason) && warnedMissingAuthConfig) {
+      console.error('[Auth] Kicked before login. Add credentials to autonomous/.env to run the task loop.');
     }
   });
   bot.on('error', (err) => console.error('[Bot] Error:', err.message));

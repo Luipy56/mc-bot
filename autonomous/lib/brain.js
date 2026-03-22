@@ -1,12 +1,13 @@
 'use strict';
 
 const { nextRoadmapTask } = require('./planner');
-const { syncProgressFromInventory, updateSituation } = require('./situation');
+const { syncProgressFromInventory, reconcileProgressWithInventory, updateSituation } = require('./situation');
 const retry = require('./retryPolicy');
 const { setBlackboard } = require('./state');
 
 const STUCK_FAILURES_BEFORE_EXPLORE = parseInt(process.env.STUCK_FAILURES_BEFORE_EXPLORE || '2', 10);
 const IGNORE_RETREAT_TASKS = /^(1|true|yes|on)$/i.test(process.env.IGNORE_RETREAT_TASKS || '');
+const IGNORE_HUNGER_TASKS = /^(1|true|yes|on)$/i.test(process.env.IGNORE_HUNGER_TASKS || '');
 
 /**
  * Critical survival: very low health + threats → retreat before anything else.
@@ -16,6 +17,20 @@ function criticalInterrupt(state, bot) {
   if (!bot || bot.health == null) return null;
   const h = bot.health;
   const hostiles = state.blackboard?.nearHostiles ?? 0;
+  if (
+    !IGNORE_HUNGER_TASKS
+    && state.blackboard?.hasFoodInInventory
+    && bot.food != null
+    && bot.food < 14
+    && h <= 10
+    && hostiles >= 1
+  ) {
+    return {
+      taskId: 'eat_if_needed',
+      params: { minFood: 14 },
+      reason: 'Critical health with hostiles; eat to regenerate before retreating.',
+    };
+  }
   if (h <= 8 && hostiles >= 1) {
     return { taskId: 'retreat', params: { urgency: 'high' }, reason: 'Critical health with hostiles; retreat.' };
   }
@@ -31,6 +46,13 @@ function criticalInterrupt(state, bot) {
 function maybeExploreInstead(state, roadmap) {
   const id = roadmap.taskId;
   if (id === 'idle' || id === 'explore_nearby' || id === 'retreat') return null;
+  if (id === 'kill_enemy' && retry.getFailureCount(state, id) >= STUCK_FAILURES_BEFORE_EXPLORE) {
+    return {
+      taskId: 'explore_nearby',
+      params: { forTask: id },
+      reason: 'Combat stuck; explore to break aggro and load new ground.',
+    };
+  }
   if (retry.isInCooldown(state, id)) {
     return {
       taskId: 'explore_nearby',
@@ -56,6 +78,7 @@ function nextTask(state, bot) {
 
   if (bot) {
     syncProgressFromInventory(state, bot);
+    reconcileProgressWithInventory(state, bot);
     updateSituation(bot, state);
   }
 
@@ -76,7 +99,7 @@ function nextTask(state, bot) {
 function onExploreSuccess(state, params) {
   const forTask = params?.forTask;
   if (forTask) retry.recordSuccess(state, forTask);
-  const cur = state.blackboard?.miningMaxDistance ?? 32;
+  const cur = state.blackboard?.miningMaxDistance ?? 72;
   const next = Math.min(192, cur + 12);
   setBlackboard(state, 'miningMaxDistance', next);
 }

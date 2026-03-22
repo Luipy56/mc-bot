@@ -40,7 +40,8 @@ async function run(bot, state, params = {}) {
     }
   }
   if (!oreItem) {
-    return { success: false, reason: 'No smeltable iron (raw_iron/iron_ore) in inventory.' };
+    const need = oreNames.join('/');
+    return { success: false, reason: `No smeltable input in inventory (need ${need}).` };
   }
 
   const maxCycles = 40;

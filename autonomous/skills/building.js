@@ -4,6 +4,9 @@ const Vec3 = require('vec3');
 const { GoalNear } = require('mineflayer-pathfinder').goals;
 const { setBlackboard } = require('../lib/state');
 
+const PLACE_BLOCK_RETRIES = Math.max(1, parseInt(process.env.PLACE_BLOCK_RETRIES || '3', 10));
+const PLACE_RETRY_MS = parseInt(process.env.PLACE_RETRY_MS || '500', 10);
+
 function isAirLike(name) {
   return name === 'air' || name === 'cave_air' || name === 'void_air';
 }
@@ -54,8 +57,23 @@ async function run(bot, state, params = {}) {
 
     try {
       await bot.equip(item, 'hand');
-      await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
-      return { success: true, reason: `Placed ${blockName} at (${pos.x}, ${pos.y}, ${pos.z}).` };
+      let placed = false;
+      for (let r = 0; r < PLACE_BLOCK_RETRIES; r++) {
+        try {
+          await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
+          placed = true;
+          break;
+        } catch (err) {
+          lastErr = err.message || 'Place failed.';
+          if (!/blockupdate|timeout|did not fire/i.test(String(lastErr)) || r === PLACE_BLOCK_RETRIES - 1) {
+            throw err;
+          }
+          await new Promise((res) => setTimeout(res, PLACE_RETRY_MS));
+        }
+      }
+      if (placed) {
+        return { success: true, reason: `Placed ${blockName} at (${pos.x}, ${pos.y}, ${pos.z}).` };
+      }
     } catch (err) {
       lastErr = err.message || 'Place failed.';
       continue;

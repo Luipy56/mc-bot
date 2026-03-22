@@ -4,6 +4,8 @@ const { markCompleted } = require('./state');
 const { capture } = require('./perception');
 const retry = require('./retryPolicy');
 const { onExploreSuccess } = require('./brain');
+const { phaseForTask } = require('./roadmapPhases');
+const humanPlayer = require('./humanPlayer');
 
 const DEFAULT_TASK_TIMEOUT_MS = 120000;
 
@@ -30,7 +32,14 @@ function withTimeout(promise, ms, taskId) {
  */
 function createExecutor(skills, options = {}) {
   const timeoutMs = options.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
-  const noCompleteTasks = new Set(['eat_if_needed', 'sleep_in_bed', 'explore_nearby', 'retreat']);
+  const noCompleteTasks = new Set([
+    'eat_if_needed',
+    'sleep_in_bed',
+    'explore_nearby',
+    'retreat',
+    'lighten_inventory',
+    'craft_iron_armor_set',
+  ]);
 
   return async function runTask(bot, state, task) {
     const { taskId, params, reason } = task;
@@ -53,9 +62,23 @@ function createExecutor(skills, options = {}) {
       return { success: false, nextTask: null, reason: `Unknown task: ${taskId}` };
     }
 
+    const structuredLog = /^(1|true|yes|on)$/i.test(process.env.AGENT_STRUCTURED_LOG || '');
+    const t0 = Date.now();
     try {
+      await humanPlayer.beforeTask(bot, taskId);
       const runPromise = skill.run(bot, state, { ...params, _taskId: taskId });
       const result = await withTimeout(runPromise, timeoutMs, taskId);
+      await humanPlayer.afterTask(bot, taskId, result.success);
+      if (structuredLog) {
+        const line = JSON.stringify({
+          taskId,
+          phase: phaseForTask(taskId),
+          ok: result.success,
+          ms: Date.now() - t0,
+          reason: String(result.reason || reason || '').slice(0, 240),
+        });
+        console.log('[Agent]', line);
+      }
       if (result.success) {
         if (!noCompleteTasks.has(taskId)) markCompleted(state, taskId);
         if (taskId === 'explore_nearby') onExploreSuccess(state, params);
@@ -66,6 +89,7 @@ function createExecutor(skills, options = {}) {
       }
       return { success: result.success, nextTask: taskId, reason: result.reason || reason };
     } catch (err) {
+      await humanPlayer.afterTask(bot, taskId, false);
       retry.recordFailure(state, taskId);
       clearPathfinderGoal(bot);
       return { success: false, nextTask: taskId, reason: err.message || String(err) };

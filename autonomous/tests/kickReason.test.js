@@ -18,4 +18,21 @@ assert.strictEqual(kickNeedsSlowReconnect('Wrong password!'), true);
 const compoundWithExtra = { type: 'compound', value: { extra: { value: [{ text: { type: 'string', value: 'Login timeout exceeded.' } }] } } };
 assert.strictEqual(formatKickReason(compoundWithExtra), 'Login timeout exceeded.');
 
+const nestedListKick = {
+  type: 'compound',
+  value: {
+    extra: {
+      type: 'list',
+      value: {
+        type: 'compound',
+        value: [
+          { text: { type: 'string', value: 'Login timeout exceeded, you have been kicked from the server, please try again!' } },
+        ],
+      },
+    },
+    text: { type: 'string', value: '' },
+  },
+};
+assert.ok(formatKickReason(nestedListKick).includes('Login timeout exceeded'));
+
 console.log('kickReason.test.js: all passed');

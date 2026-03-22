@@ -27,6 +27,11 @@ function isCompleted(state, taskId) {
   return state.progress.includes(taskId);
 }
 
+function unmarkCompleted(state, taskId) {
+  if (!state?.progress?.length) return;
+  state.progress = state.progress.filter((id) => id !== taskId);
+}
+
 function setBlackboard(state, key, value) {
   state.blackboard[key] = value;
 }
@@ -35,4 +40,4 @@ function getBlackboard(state, key) {
   return state.blackboard[key];
 }
 
-module.exports = { createState, markCompleted, isCompleted, setBlackboard, getBlackboard };
+module.exports = { createState, markCompleted, unmarkCompleted, isCompleted, setBlackboard, getBlackboard };

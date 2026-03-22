@@ -3,7 +3,13 @@
 
 const assert = require('assert');
 const { createState, isCompleted, markCompleted } = require('../lib/state');
-const { countNearbyHostiles, countNearbyPassiveFoodMobs, syncProgressFromInventory, updateSituation } = require('../lib/situation');
+const {
+  countNearbyHostiles,
+  countNearbyPassiveFoodMobs,
+  syncProgressFromInventory,
+  reconcileProgressWithInventory,
+  updateSituation,
+} = require('../lib/situation');
 
 function testCountHostiles() {
   const pos = {};
@@ -57,6 +63,48 @@ function testSyncSkipsCraftPlanks() {
   assert.strictEqual(isCompleted(state, 'craft_planks'), true);
 }
 
+function testReconcileStaleCraftingTable() {
+  const state = createState();
+  markCompleted(state, 'craft_crafting_table');
+  markCompleted(state, 'place_crafting_table');
+  const bot = {
+    inventory: { items: () => [{ name: 'oak_planks', count: 8 }] },
+    findBlock: () => null,
+  };
+  reconcileProgressWithInventory(state, bot);
+  assert.strictEqual(isCompleted(state, 'craft_crafting_table'), false);
+  assert.strictEqual(isCompleted(state, 'place_crafting_table'), false);
+}
+
+function testReconcileKeepsTableWhenPlaced() {
+  const state = createState();
+  markCompleted(state, 'place_crafting_table');
+  const bot = {
+    inventory: { items: () => [] },
+    findBlock: () => ({ name: 'crafting_table', position: { x: 0, y: 64, z: 0 } }),
+  };
+  reconcileProgressWithInventory(state, bot);
+  assert.strictEqual(isCompleted(state, 'place_crafting_table'), true);
+}
+
+function testReconcileUnmarksCraftPlanksWhenTooFewForTable() {
+  const state = createState();
+  ['init_structure', 'connect', 'goto_test', 'collect_wood', 'craft_planks', 'craft_sticks'].forEach((id) =>
+    markCompleted(state, id)
+  );
+  const bot = {
+    inventory: {
+      items: () => [
+        { name: 'oak_planks', count: 2 },
+        { name: 'stick', count: 4 },
+      ],
+    },
+  };
+  reconcileProgressWithInventory(state, bot);
+  assert.strictEqual(isCompleted(state, 'craft_planks'), false);
+  assert.strictEqual(isCompleted(state, 'collect_wood'), false);
+}
+
 function testUpdateSituation() {
   const state = createState();
   const bot = {
@@ -77,6 +125,9 @@ function run() {
   testCountPassiveFoodMobs();
   testSyncSkipsCollectWood();
   testSyncSkipsCraftPlanks();
+  testReconcileStaleCraftingTable();
+  testReconcileKeepsTableWhenPlaced();
+  testReconcileUnmarksCraftPlanksWhenTooFewForTable();
   testUpdateSituation();
   console.log('situation.test.js: all passed');
 }

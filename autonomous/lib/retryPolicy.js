@@ -59,7 +59,9 @@ function getFailureCount(state, taskId) {
  * Mining/gather tasks that benefit from exploration when stuck.
  */
 function isGatherTask(taskId) {
-  return /^(collect_|hunt_food|goto_test)/.test(taskId || '');
+  return /^(collect_|hunt_food|goto_test|find_stronghold|fill_end_portal|shortcut_|lighten_inventory|fill_water_bucket|place_water_source|shear_sheep|milk_cow|harvest_mature_wheat|till_plant_wheat)/.test(
+    taskId || ''
+  );
 }
 
 module.exports = {

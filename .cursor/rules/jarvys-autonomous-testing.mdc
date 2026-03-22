@@ -1,0 +1,36 @@
+---
+description: How to live-test Jarvys (autonomous bot), read logs, and turn failures into code fixes.
+globs: autonomous/**/*
+alwaysApply: false
+---
+
+# Jarvys autonomous — testing and regression workflow
+
+## Live probe (real server)
+
+- Run from `autonomous/` with **isolated state**: `STATE_FILE=/tmp/jarvys-probe.state.json` so runs do not clobber `.state.json`.
+- **Shorter roadmap to mid-game:** `SKIP_WOODEN_HOUSE=1` when validating iron/Nether path.
+- **Bounded wall time:** `timeout 600 node bot.js` (10 min) or similar; capture output: `2>&1 | tee /tmp/jarvys-run.log`.
+- **Stop old sessions** before a new probe (`kill` on prior `timeout`/`node bot.js` if needed).
+
+## What to read in logs
+
+- `[Agent] Task:` / `[Agent] Result:` — task choice and success/fail.
+- `[JarvysAgent]` JSON on stderr — structured `taskId`, `failReason`, `food`, `health`, `pos` for the assistant.
+- Server lines: protection/claims (`can't break`, `/trapped`), death, kicks.
+
+## Diagnosing failures (do not stop at the surface message)
+
+- **"No recipe" / `recipesFor` empty** — often **missing materials** (e.g. furnace needs **8** cobblestone) or **crafting table** too far / not placed; verify planner counts and `situation.js` `syncProgressFromInventory` thresholds match.
+- **`blockUpdate` / place timeout** — latency or claim; consider **retries** in `skills/building.js`, not only “placement AI”.
+- **Hunger / hunt loops** — planner runs **craft chain through `craft_wood_pick`** before hunt/explore-for-food, so sync-skipped `collect_wood` (starter logs) does not send an unarmed bot to find animals.
+- **Pathfinder** — `Took to long to decide path` vs goal timeout; may need explore, angle, or movements tuning—not always a “bug” in one skill.
+
+## After code changes
+
+- `cd autonomous && npm test` (unit + `test-task-loop.js`) before considering the task done.
+- Optional: `npm run test:yolo` only when intentionally hitting a real server (see `integration-yolo.test.js`).
+
+## Tracking backlog
+
+- Append **symptom → root cause → fix (or TODO)** to `autonomous/notes/nether-probe-failures.txt` (or sibling note files) so long runs inform the next implementation pass.

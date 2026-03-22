@@ -1,0 +1,21 @@
+Nether long-run session (started on request)
+
+Environment:
+  SKIP_WOODEN_HOUSE=1
+  STATE_FILE=/tmp/jarvys-nether-longrun.state.json  (persistent progress for this run)
+  Max wall time: 90 minutes (timeout 5400 wraps node bot.js)
+
+Logs (append mode):
+  /tmp/jarvys-nether-longrun.log
+
+Process id (parent is `timeout`, child is node):
+  /tmp/jarvys-nether-longrun.pid
+
+Monitor:
+  tail -f /tmp/jarvys-nether-longrun.log
+  grep -E 'Nether|nether_portal|enter_nether|dimension|fail|Result: fail' /tmp/jarvys-nether-longrun.log
+
+Stop manually:
+  kill $(cat /tmp/jarvys-nether-longrun.pid)
+
+After the run ends, append new failures to notes/nether-probe-failures.txt from the log.

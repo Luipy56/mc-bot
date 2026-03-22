@@ -2,6 +2,7 @@
 
 const { GoalFollow } = require('mineflayer-pathfinder').goals;
 const { countItemsByNames, MEAT_NAMES, PASSIVE_FOOD_MOBS, findBestFoodItem } = require('../lib/food');
+const humanPlayer = require('../lib/humanPlayer');
 
 const HUNT_TIMEOUT_MS = parseInt(process.env.HUNT_TIMEOUT_MS || '30000', 10);
 const HUNT_ATTACK_INTERVAL_MS = parseInt(process.env.HUNT_ATTACK_INTERVAL_MS || '700', 10);
@@ -78,7 +79,7 @@ async function run(bot, state, params = {}) {
     if (dist <= 3.3) {
       try { await bot.lookAt(target.position.offset(0, 1.0, 0), true); } catch (e) {}
       try { await bot.attack(target); } catch (e) {}
-      await sleep(HUNT_ATTACK_INTERVAL_MS);
+      await sleep(humanPlayer.huntingAttackDelayMs(HUNT_ATTACK_INTERVAL_MS));
     } else {
       await sleep(180);
     }

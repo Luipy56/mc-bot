@@ -1,0 +1,49 @@
+Nether progression probe — failures observed (live run Jarvys @ mc.ldeluipy.es, ~10 min, SKIP_WOODEN_HOUSE=1, fresh STATE_FILE)
+
+A) goto_test
+   - First attempt: "Took to long to decide path to goal!" (pathfinder decision timeout).
+   - Second attempt succeeded.
+   - TODO: optional retry with new gotoTestAngle on this error; tune movements / timeout (GOTO_TEST_TIMEOUT_MS).
+
+B) collect_wood
+   - Repeated "No wood logs within search radius" until miningMaxDistance grew via explore + hunt_food ran.
+   - TODO: consider higher default START_WOOD_TARGET area search or earlier explore bias when zero logs in biome.
+
+C) craft_planks
+   - After one successful craft, a second craft_planks failed with "Error: missing ingredient" (planner had already satisfied planks; redundant task).
+   - MITIGATED: crafting.js short-circuits when countAllPlanks >= requested count.
+
+D) collect_cobblestone
+   - Task hit TASK_TIMEOUT_MS (120s) then "have 0/4" — pathfinder could not reach distant stone; server chat suggested land claim (/trapped).
+   - MITIGATED: mining.js tries underfoot stone/deepslate/cobble when no target in radius or goto/dig fails.
+   - TODO: integrate /trapped or claim-aware explore; longer timeout for collect_cobblestone only; detect claim denial faster.
+
+E) place_crafting_table / craft_crafting_table repeated after explore
+   - Table re-crafted and re-placed mid-sequence (state vs world drift or table far from bot).
+   - TODO: reconcile "placed table exists within N blocks" before unmarking; avoid duplicate placement spam.
+
+F) Nether not reached in window
+   - Run ended during early stone age; no iron/diamond/portal yet.
+   - Expect further failures later: diamond cave, obsidian near lava, portal ignite, enter_nether dimension sync.
+
+G) Second probe (~4.5 min, fresh state, same server)
+   - goto_test ok.
+   - Planner chose hunt_food before collect_wood (nearPassiveFood >= 1); hunt failed repeatedly; bot starved at ~same chunk.
+   - MITIGATED: planner now runs collect_wood before any hunt_food / explore-for-hunt (eat_if_needed still first if inventory has food).
+   - After respawn: spawn protection + collect_wood fail; explore started — timeout ended run.
+
+Generated for follow-up implementation; see git history for mitigations dated same session.
+
+---
+
+10-minute live test (Jarvys, SKIP_WOODEN_HOUSE=1, /tmp/jarvys-10min-test.log) — summary
+
+Went well:
+- goto_test, collect_wood, stone/cobble chain partially, coal, chest craft, collect_more_wood recovery after timeout.
+
+Failed / weak (addressed in code where noted):
+- place_crafting_table: blockUpdate 5s timeout → building.js retries place (PLACE_BLOCK_RETRIES).
+- hunt_food in protected area → expected; explore escaped.
+- craft_wood_pick: no recipe / low materials + table reach → crafting wider table search (CRAFTING_TABLE_FIND_DIST) + material hints.
+- craft_furnace loop: root cause insufficient cobble after stone pick (4 mined, 3 used, 1 left; furnace needs 8) → planner+situation now require 12 cobble for collect_cobblestone.
+
