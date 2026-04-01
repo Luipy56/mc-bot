@@ -3,20 +3,18 @@
 
 /**
  * Autonomous Mineflayer bot — goal: complete the game (Ender Dragon).
- * Config from .env: NAME/SERVER_IP/PORT/VERSION or MC_*.
- * Loads pathfinder and runs task loop after spawn.
+ * Secrets/connection: .env. Tuning: config/default.yml (loadRuntimeConfig via lib/config.js).
  */
 
 const fs = require('fs');
 const path = require('path');
 
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+const { getConfig } = require('./lib/config');
 
 const mineflayer = require('mineflayer');
 const pathfinder = require('mineflayer-pathfinder').pathfinder;
 const Movements = require('mineflayer-pathfinder').Movements;
 
-const { getConfig } = require('./lib/config');
 const { buildExtraPlayerSkills } = require('./lib/extraPlayerSkills');
 const { createState, markCompleted, isCompleted, setBlackboard } = require('./lib/state');
 const { nextTask } = require('./lib/brain');
@@ -56,6 +54,13 @@ const gearApplySkill = require('./skills/gearApply');
 const fillWaterBucketSkill = require('./skills/fillWaterBucket');
 const placeWaterWellSkill = require('./skills/placeWaterWell');
 const shearSheepSkill = require('./skills/shearSheep');
+const chunkMissionSkill = require('./skills/chunkMission');
+const unstuckRecoverSkill = require('./skills/unstuckRecover');
+const {
+  createChunkMissionFromPosition,
+  parseChunkStripChatMessage,
+  chunkOrigin,
+} = require('./lib/chunkMissionState');
 const config = getConfig();
 
 const skills = {
@@ -129,6 +134,8 @@ const skills = {
   place_water_source: placeWaterWellSkill,
   craft_shears: craftingSkill,
   shear_sheep: shearSheepSkill,
+  chunk_mission_step: chunkMissionSkill,
+  unstuck_recover: unstuckRecoverSkill,
 };
 
 Object.assign(
@@ -644,6 +651,17 @@ function createBot() {
       jarvysVoice.onDeath(connectionBot, state);
     } catch (e) { /* ignore */ }
     try { connectionBot.pathfinder?.setGoal(null); } catch (e) {}
+    const m = state.blackboard?.chunkMission;
+    if (m && m.active) {
+      const p = connectionBot.entity?.position;
+      const lp = p
+        ? { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) }
+        : state.blackboard?.lastPos;
+      if (lp) m.lastDeathPos = { ...lp };
+      m.phaseBeforeDeath = m.phase;
+      m.pendingRecovery = true;
+      m.phase = 'recovery';
+    }
   });
 
   bot.on('respawn', () => {
@@ -684,6 +702,36 @@ function createBot() {
     console.log('[Chat] <', username, '>', message);
     const raw = String(message || '').trim();
     const lower = raw.toLowerCase();
+    if (isFriend(username)) {
+      const stripCmd = parseChunkStripChatMessage(raw);
+      if (stripCmd?.action === 'start') {
+        if (!connectionBot.entity) {
+          sendHumanReply('Aún no he spawneado; espera un momento.');
+          return;
+        }
+        const m = createChunkMissionFromPosition(connectionBot.entity.position, { requester: username });
+        const co = chunkOrigin(m.chunkX, m.chunkZ);
+        m.surfaceY = chunkMissionSkill.estimateSurfaceY(connectionBot, co.minX, co.minZ);
+        setBlackboard(state, 'chunkMission', m);
+        saveState(state);
+        sendHumanReply(
+          `Chunk strip: chunk (${m.chunkX}, ${m.chunkZ}) hasta Y≤${m.targetY}. !chunkstrip stop para cancelar.`
+        );
+        return;
+      }
+      if (stripCmd?.action === 'stop') {
+        const cur = state.blackboard?.chunkMission;
+        if (cur && cur.active) {
+          cur.active = false;
+          cur.phase = 'complete';
+          saveState(state);
+          sendHumanReply('Misión chunk cancelada.');
+        } else {
+          sendHumanReply('No hay misión chunk activa.');
+        }
+        return;
+      }
+    }
     if (isFriend(username) && (lower === 'hello' || lower === 'hi' || lower === 'hey')) {
       sendHumanReply(`Hello, ${username}!`);
       return;

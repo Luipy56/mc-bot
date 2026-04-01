@@ -49,6 +49,14 @@ const ROADMAP_PHASES = Object.freeze([
     id: 'postgame',
     taskIds: ['postgame_end_city', 'postgame_wither_prep'],
   },
+  {
+    id: 'chunk_mission',
+    taskIds: ['chunk_mission_step'],
+  },
+  {
+    id: 'recovery',
+    taskIds: ['unstuck_recover'],
+  },
 ]);
 
 function phaseForTask(taskId) {

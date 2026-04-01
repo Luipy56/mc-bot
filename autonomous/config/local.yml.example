@@ -1,0 +1,6 @@
+# Optional local overrides (copy to local.yml — gitignored).
+# Same flat keys as default.yml; values override defaults for your machine only.
+#
+# Example:
+# TASK_TIMEOUT_MS: 300000
+# SKIP_WOODEN_HOUSE: true

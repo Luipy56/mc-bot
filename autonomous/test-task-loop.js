@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
+require('./lib/loadRuntimeConfig').init();
+
 /**
  * Hard-test the task loop without a live server: mock bot, run planner + executor.
  */

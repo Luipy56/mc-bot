@@ -3,7 +3,7 @@
 
 /**
  * Run two bot instances with different names and state files so they can interact on the same server.
- * Uses .env for SERVER_IP/PORT/VERSION; overrides NAME and STATE_FILE per bot. Sets BOT_FRIENDS
+ * Uses .env for connection/secrets; tuning from config/default.yml. Overrides NAME and STATE_FILE per bot. Sets BOT_FRIENDS
  * so each bot greets the other (playerJoined + spawn) and replies to "hello"/"hi".
  *
  * Usage: node run-two-bots.js [name1] [name2]   (default: Jarvys, Jarvys2)
@@ -17,7 +17,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('./lib/loadRuntimeConfig').init();
 
 const name1 = process.argv[2] || 'Jarvys';
 const name2 = process.argv[3] || 'Jarvys2';

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
+require('../lib/loadRuntimeConfig').init();
+
 const { spawn } = require('child_process');
 const path = require('path');
 
@@ -36,6 +38,11 @@ const tests = [
   'jarvysVoice.test.js',
   'playerSkillCatalog.test.js',
   'humanPlayer.test.js',
+  'chunkMission.test.js',
+  'unstuck.test.js',
+  'mineability.test.js',
+  'miningHelpChat.test.js',
+  'loadRuntimeConfig.test.js',
 ];
 
 if (yoloMode) tests.push('integration-yolo.test.js');

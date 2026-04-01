@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * Load env and return bot config. NAME/SERVER_IP/PORT/VERSION take precedence over MC_*.
+ * Connection: .env only (see .env.example). Tuning defaults: config/default.yml (+ optional config/local.yml).
  * VERSION=latest → 1.21.11.
  */
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('./loadRuntimeConfig').init();
 
 const DEFAULT_VERSION = '1.21.11';
 
@@ -17,7 +17,7 @@ function getConfig() {
   const auth = process.env.MC_AUTH || 'offline';
 
   if (!name) {
-    console.error('[Config] Set NAME or MC_USERNAME in .env (copy from .env.example)');
+    console.error('[Config] Set NAME or MC_USERNAME in autonomous/.env (see .env.example)');
     process.exit(1);
   }
 

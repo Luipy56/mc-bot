@@ -1,0 +1,5 @@
+{
+  "name": "mc-bot",
+  "private": true,
+  "workspaces": ["basic", "autonomous", "viewer"]
+}

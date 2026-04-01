@@ -4,6 +4,8 @@ const { nextRoadmapTask } = require('./planner');
 const { syncProgressFromInventory, reconcileProgressWithInventory, updateSituation } = require('./situation');
 const retry = require('./retryPolicy');
 const { setBlackboard } = require('./state');
+const { nextChunkMissionTask } = require('./chunkMissionBrain');
+const { nextRecoveryTask } = require('./unstuck');
 
 const STUCK_FAILURES_BEFORE_EXPLORE = parseInt(process.env.STUCK_FAILURES_BEFORE_EXPLORE || '2', 10);
 const IGNORE_RETREAT_TASKS = /^(1|true|yes|on)$/i.test(process.env.IGNORE_RETREAT_TASKS || '');
@@ -84,6 +86,12 @@ function nextTask(state, bot) {
 
   const crit = criticalInterrupt(state, bot);
   if (crit) return crit;
+
+  const recovery = nextRecoveryTask(state);
+  if (recovery) return recovery;
+
+  const chunkMissionTask = nextChunkMissionTask(state, bot);
+  if (chunkMissionTask) return chunkMissionTask;
 
   let roadmap = nextRoadmapTask(state, bot);
 

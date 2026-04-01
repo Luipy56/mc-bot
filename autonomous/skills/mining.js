@@ -5,6 +5,7 @@ const { GoalGetToBlock, GoalNear } = require('mineflayer-pathfinder').goals;
 const { countItems } = require('../lib/inventoryQuery');
 const { setBlackboard } = require('../lib/state');
 const humanPlayer = require('../lib/humanPlayer');
+const { digWithSoftlockGuard } = require('../lib/mineability');
 
 /** Pathfinder can hang indefinitely on unreachable/unbreakable blocks (PrismarineJS/mineflayer-pathfinder#222). */
 const GOTO_BLOCK_TIMEOUT_MS = parseInt(process.env.MINING_GOTO_TIMEOUT_MS || '25000', 10);
@@ -71,7 +72,8 @@ async function tryMineStoneUnderfoot(bot, state) {
     if (tool) await bot.equip(tool, 'hand');
   }
   try {
-    await bot.dig(block);
+    const dug = await digWithSoftlockGuard(bot, block, state);
+    if (!dug.ok) return false;
     await new Promise((r) => setTimeout(r, 220));
     return true;
   } catch (e) {
@@ -214,7 +216,10 @@ async function run(bot, state, params = {}) {
     }
 
     try {
-      await bot.dig(block);
+      const dug = await digWithSoftlockGuard(bot, block, state);
+      if (!dug.ok) {
+        continue;
+      }
       await humanPlayer.maybeMiningBeat(bot);
     } catch (e) {
       const msg = String(e?.message || '').toLowerCase();

@@ -6,6 +6,7 @@ const retry = require('./retryPolicy');
 const { onExploreSuccess } = require('./brain');
 const { phaseForTask } = require('./roadmapPhases');
 const humanPlayer = require('./humanPlayer');
+const { notePathOutcome } = require('./unstuck');
 
 const DEFAULT_TASK_TIMEOUT_MS = 120000;
 
@@ -39,6 +40,8 @@ function createExecutor(skills, options = {}) {
     'retreat',
     'lighten_inventory',
     'craft_iron_armor_set',
+    'chunk_mission_step',
+    'unstuck_recover',
   ]);
 
   return async function runTask(bot, state, task) {
@@ -79,6 +82,7 @@ function createExecutor(skills, options = {}) {
         });
         console.log('[Agent]', line);
       }
+      notePathOutcome(state, taskId, result.success, result.reason || reason);
       if (result.success) {
         if (!noCompleteTasks.has(taskId)) markCompleted(state, taskId);
         if (taskId === 'explore_nearby') onExploreSuccess(state, params);
@@ -89,6 +93,7 @@ function createExecutor(skills, options = {}) {
       }
       return { success: result.success, nextTask: taskId, reason: result.reason || reason };
     } catch (err) {
+      notePathOutcome(state, taskId, false, err.message || String(err));
       await humanPlayer.afterTask(bot, taskId, false);
       retry.recordFailure(state, taskId);
       clearPathfinderGoal(bot);

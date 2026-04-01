@@ -21,7 +21,7 @@ function sleep(ms) {
 }
 
 /** Skip heavy “thinking” for instant meta tasks. */
-const SKIP_PRE_TASK = new Set(['idle', 'connect', 'init_structure']);
+const SKIP_PRE_TASK = new Set(['idle', 'connect', 'init_structure', 'unstuck_recover']);
 
 /**
  * Brief look + optional arm swing (does not block pathfinding goals).

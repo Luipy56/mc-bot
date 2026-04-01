@@ -9,7 +9,7 @@
  * Run: npm run test:yolo   or   node tests/run-all.js --yolo
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('../lib/loadRuntimeConfig').init();
 
 const { spawn } = require('child_process');
 const path = require('path');

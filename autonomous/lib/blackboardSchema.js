@@ -24,6 +24,12 @@ const BLACKBOARD_KEYS = Object.freeze([
   'strongholdPortalPos',
   'taskFailures',
   'taskCooldownUntil',
+  'chunkMission',
+  'pathStreak',
+  'lastPathTaskId',
+  'unstuckFailStreak',
+  'lastSoftlockDig',
+  'lastMiningHelpChatAt',
 ]);
 
 module.exports = { BLACKBOARD_KEYS };
