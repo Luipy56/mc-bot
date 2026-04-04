@@ -18,6 +18,7 @@ function _cooldowns(state) {
  */
 function recordFailure(state, taskId) {
   if (!state || !taskId || taskId === 'idle' || taskId === 'explore_nearby' || taskId === 'retreat') return;
+  if (String(taskId).startsWith('human_human_')) return;
   const f = _failures(state);
   f[taskId] = (f[taskId] || 0) + 1;
   const maxF = DEFAULT_MAX_FAILURES;
@@ -31,6 +32,7 @@ function recordFailure(state, taskId) {
  */
 function recordSuccess(state, taskId) {
   if (!state || !taskId) return;
+  if (String(taskId).startsWith('human_human_')) return;
   const f = _failures(state);
   if (f[taskId]) delete f[taskId];
   delete _cooldowns(state)[taskId];

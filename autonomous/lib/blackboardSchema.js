@@ -30,6 +30,8 @@ const BLACKBOARD_KEYS = Object.freeze([
   'unstuckFailStreak',
   'lastSoftlockDig',
   'lastMiningHelpChatAt',
+  'humanMilkCowAt',
+  'lastJarvysHumanPlayAt',
 ]);
 
 module.exports = { BLACKBOARD_KEYS };

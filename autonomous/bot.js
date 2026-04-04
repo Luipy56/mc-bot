@@ -24,6 +24,7 @@ const { formatKickReason, kickNeedsSlowReconnect } = require('./lib/kickReason')
 const { detectAuthSignal } = require('./lib/authSignals');
 const { getCompleted, getIncomplete, getNextTaskForAdvancement } = require('./lib/advancements');
 const jarvysVoice = require('./lib/jarvysVoice');
+const { maybePickHumanMicroTask } = require('./lib/jarvysHumanPlayMicro');
 const movementSkill = require('./skills/movement');
 const miningSkill = require('./skills/mining');
 const craftingSkill = require('./skills/crafting');
@@ -235,6 +236,12 @@ function scheduleLoop() {
           console.log('[Agent] Task:', task.taskId, '—', task.reason);
           const result = await runTask(bot, state, task);
           console.log('[Agent] Result:', result.success ? 'ok' : 'fail', result.reason);
+          const microTask = maybePickHumanMicroTask(state, bot, task.taskId, result.success);
+          if (microTask) {
+            console.log('[Agent] Task:', microTask.taskId, '—', microTask.reason);
+            const microResult = await runTask(bot, state, microTask);
+            console.log('[Agent] Result:', microResult.success ? 'ok' : 'fail', microResult.reason);
+          }
           jarvysVoice.afterTask(bot, state, { task, result });
           if (typeof bot._applyMovementRules === 'function') bot._applyMovementRules();
           maybeTriggerRtpSearch(task, result);

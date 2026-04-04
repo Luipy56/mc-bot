@@ -1,5 +1,7 @@
 'use strict';
 
+const { HUMAN_PLAY_CATALOG } = require('./humanPlayCatalog');
+
 /**
  * Taxonomy of “normal player” capabilities for Jarvys.
  *
@@ -187,6 +189,8 @@ const SKILL_CATALOG = [
   { id: 'collect_redstone_dust', category: 'gathering', title: 'Redstone', description: 'Dust for basic circuits.', status: 'extended' },
   { id: 'wave_at_nearby_player', category: 'social', title: 'Wave', description: 'Look at another player and swing arm.', status: 'extended' },
   { id: 'glance_behind', category: 'movement', title: 'Glance back', description: 'Quick look behind (human paranoia).', status: 'extended' },
+
+  ...HUMAN_PLAY_CATALOG,
 ];
 
 function catalogStats() {

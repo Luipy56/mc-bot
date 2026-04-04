@@ -37,11 +37,21 @@ function testIsGatherTask() {
   assert.strictEqual(retry.isGatherTask('craft_planks'), false);
 }
 
+function testHumanPlaySkipsFailureTracking() {
+  const state = createState();
+  const id = 'human_human_idle_camera_micro_yaw_noise';
+  for (let i = 0; i < 10; i++) retry.recordFailure(state, id);
+  assert.strictEqual(retry.getFailureCount(state, id), 0);
+  retry.recordSuccess(state, id);
+  assert.strictEqual(retry.getFailureCount(state, id), 0);
+}
+
 function run() {
   testRecordFailureAndCooldown();
   testRecordSuccessClears();
   testExploreNoFailureTrack();
   testIsGatherTask();
+  testHumanPlaySkipsFailureTracking();
   console.log('retryPolicy.test.js: all passed');
 }
 

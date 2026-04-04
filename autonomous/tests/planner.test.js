@@ -64,6 +64,47 @@ function testNoEatLoopAtThreshold() {
   assert.notStrictEqual(task.taskId, 'eat_if_needed');
 }
 
+function testDeepslateEatEarlier() {
+  const prev = process.env.DEEPSLATE_EAT_THRESHOLD_BONUS;
+  process.env.DEEPSLATE_EAT_THRESHOLD_BONUS = '2';
+  try {
+    const state = createState();
+    ['init_structure', 'connect', 'goto_test'].forEach((id) => markCompleted(state, id));
+    const bot = mockBot({
+      food: 10,
+      entity: { position: { x: 0, y: -20, z: 0 } },
+      inventory: { items: () => [{ name: 'cooked_beef', count: 2 }] },
+    });
+    const task = nextTask(state, bot);
+    assert.strictEqual(task.taskId, 'eat_if_needed');
+    assert.strictEqual(task.params.minFood, 12);
+    assert.ok(String(task.reason).includes('deepslate'));
+  } finally {
+    if (prev === undefined) delete process.env.DEEPSLATE_EAT_THRESHOLD_BONUS;
+    else process.env.DEEPSLATE_EAT_THRESHOLD_BONUS = prev;
+  }
+}
+
+function testNetherIgnoresDeepslateEatBonus() {
+  const prev = process.env.DEEPSLATE_EAT_THRESHOLD_BONUS;
+  process.env.DEEPSLATE_EAT_THRESHOLD_BONUS = '4';
+  try {
+    const state = createState();
+    ['init_structure', 'connect', 'goto_test'].forEach((id) => markCompleted(state, id));
+    const bot = mockBot({
+      food: 10,
+      game: { dimension: 'minecraft:the_nether' },
+      entity: { position: { x: 0, y: 40, z: 0 } },
+      inventory: { items: () => [{ name: 'cooked_beef', count: 2 }] },
+    });
+    const task = nextTask(state, bot);
+    assert.notStrictEqual(task.taskId, 'eat_if_needed');
+  } finally {
+    if (prev === undefined) delete process.env.DEEPSLATE_EAT_THRESHOLD_BONUS;
+    else process.env.DEEPSLATE_EAT_THRESHOLD_BONUS = prev;
+  }
+}
+
 function testStarterHuntWhenPassiveNearby() {
   const state = createState();
   [
@@ -186,6 +227,8 @@ function run() {
   testEatWhenLowFood();
   testEatWhenLowFoodAndHasFood();
   testNoEatLoopAtThreshold();
+  testDeepslateEatEarlier();
+  testNetherIgnoresDeepslateEatBonus();
   testStarterHuntWhenPassiveNearby();
   testLowFoodHuntsWhenPassiveNearby();
   testCollectWoodWhenEnoughFood();

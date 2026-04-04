@@ -84,7 +84,9 @@ function createExecutor(skills, options = {}) {
       }
       notePathOutcome(state, taskId, result.success, result.reason || reason);
       if (result.success) {
-        if (!noCompleteTasks.has(taskId)) markCompleted(state, taskId);
+        const skipComplete =
+          noCompleteTasks.has(taskId) || String(taskId).startsWith('human_human_');
+        if (!skipComplete) markCompleted(state, taskId);
         if (taskId === 'explore_nearby') onExploreSuccess(state, params);
         retry.recordSuccess(state, taskId);
       } else {

@@ -5,6 +5,7 @@ const assert = require('assert');
 const { createState, markCompleted, isCompleted } = require('../lib/state');
 const { createExecutor } = require('../lib/executor');
 const movementSkill = require('../skills/movement');
+const extendedPlayerDispatch = require('../skills/extendedPlayerDispatch');
 
 const mockBot = () => ({
   entity: { position: { x: 0, y: 64, z: 0 }, yaw: 0, pitch: 0 },
@@ -57,6 +58,20 @@ async function testUnknownTask() {
   assert.ok(result.reason.includes('Unknown'));
 }
 
+async function testHumanPlaySuccessDoesNotMarkCompleted() {
+  const state = createState();
+  const skill = { run: extendedPlayerDispatch.run };
+  const runTask = createExecutor({ human_human_idle_camera_micro_yaw_noise: skill });
+  const bot = mockBot();
+  const result = await runTask(bot, state, {
+    taskId: 'human_human_idle_camera_micro_yaw_noise',
+    params: {},
+    reason: 'micro',
+  });
+  assert.strictEqual(result.success, true, result.reason);
+  assert.strictEqual(isCompleted(state, 'human_human_idle_camera_micro_yaw_noise'), false);
+}
+
 async function testClearPathfinderOnFailure() {
   let setGoalCalls = 0;
   const bot = {
@@ -77,6 +92,7 @@ async function run() {
   await testConnectNoSkill();
   await testSkillRun();
   await testUnknownTask();
+  await testHumanPlaySuccessDoesNotMarkCompleted();
   await testClearPathfinderOnFailure();
   console.log('executor.test.js: all passed');
 }

@@ -7,8 +7,9 @@
 
 const handlersA = require('./extendedPlayerHandlersA');
 const handlersB = require('./extendedPlayerHandlersB');
+const humanPlayHandlers = require('./humanPlayHandlers');
 
-const HANDLERS = { ...handlersA, ...handlersB };
+const HANDLERS = { ...handlersA, ...handlersB, ...humanPlayHandlers };
 
 async function run(bot, state, params = {}) {
   const id = params._taskId;

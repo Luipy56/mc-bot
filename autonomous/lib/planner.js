@@ -33,6 +33,16 @@ function logNameFromPlanks(plankName) {
   return 'oak_log';
 }
 
+/** In overworld at Y≤0, raise eat thresholds so the bot snacks before hunger + mob pressure stack (human deepslate habit). */
+function deepslateEatThresholdBonus(bot) {
+  if (!bot?.entity?.position) return 0;
+  const y = bot.entity.position.y;
+  if (y == null || !Number.isFinite(y)) return 0;
+  if (isInNether(bot)) return 0;
+  if (y > 0) return 0;
+  return Math.max(0, parseInt(process.env.DEEPSLATE_EAT_THRESHOLD_BONUS || '2', 10));
+}
+
 /**
  * Roadmap only (no world sync). Call after syncProgressFromInventory + updateSituation.
  */
@@ -95,12 +105,16 @@ function nextRoadmapTask(state, bot) {
   }
 
   if (!IGNORE_HUNGER_TASKS) {
-    const eatThreshold = dangerousNight ? 12 : 10;
+    const deepBonus = deepslateEatThresholdBonus(bot);
+    const eatThreshold = (dangerousNight ? 12 : 10) + deepBonus;
+    const minFoodTarget = (dangerousNight ? 14 : 10) + deepBonus;
     if (bot && bot.food < eatThreshold && hasFoodInInventory) {
+      let reason = dangerousNight ? 'Food low + danger; eat.' : 'Food low; eat first.';
+      if (deepBonus > 0) reason += ' (deepslate: eat earlier).';
       return {
         taskId: 'eat_if_needed',
-        params: { minFood: dangerousNight ? 14 : 10 },
-        reason: dangerousNight ? 'Food low + danger; eat.' : 'Food low; eat first.',
+        params: { minFood: minFoodTarget },
+        reason,
       };
     }
   }
